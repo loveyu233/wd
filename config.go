@@ -10,30 +10,22 @@ import (
 )
 
 // InitConfig 用来读取配置文件并填充提供的结构体。
-func InitConfig(fp string, cfg any) (string, error) {
+func InitConfig(fp string, cfg any) error {
 	if fp == "" || !IsPtr(cfg) {
-		return "", errors.New("fp为空或cfg非指针")
-	}
-
-	env := os.Getenv("GB_ENV")
-	if env == "" {
-		env = os.Getenv("GO_ENV")
-	}
-	if env == "" {
-		env = "dev"
+		return errors.New("fp为空或cfg非指针")
 	}
 
 	file, err := os.ReadFile(fp)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	switch filepath.Ext(fp) {
 	case ".json":
-		return env, json.Unmarshal(file, cfg)
+		return json.Unmarshal(file, cfg)
 	case ".yml", ".yaml":
-		return env, yaml.Unmarshal(file, cfg)
+		return yaml.Unmarshal(file, cfg)
 	default:
-		return "", errors.New("无效的文件扩展名")
+		return errors.New("无效的文件扩展名")
 	}
 }
