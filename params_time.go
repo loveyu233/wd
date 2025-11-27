@@ -1,8 +1,9 @@
 package wd
 
 import (
+	"gorm.io/gen"
 	"gorm.io/gen/field"
-	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 type ReqDateTimeStartEnd struct {
@@ -11,43 +12,39 @@ type ReqDateTimeStartEnd struct {
 
 	StartDateTime DateTime `json:"-" form:"-"`
 	EndDateTime   DateTime `json:"-" form:"-"`
-
-	DateTimeFilter bool `json:"-"`
 }
 
 // Parse 用来解析开始与结束的日期时间并设置过滤标记。
 func (req *ReqDateTimeStartEnd) Parse() error {
-	start, hasStart, err := parseOptional(req.StartDateTimeStr, ParseDateTimeValue)
+	var err error
+	req.StartDateTime, err = parseOptional(req.StartDateTimeStr, ParseDateTimeValue)
 	if err != nil {
 		return err
 	}
-	end, hasEnd, err := parseOptional(req.EndDateTimeStr, ParseDateTimeValue)
+	req.EndDateTime, err = parseOptional(req.EndDateTimeStr, ParseDateTimeValue)
 	if err != nil {
 		return err
 	}
-	if hasStart {
-		req.StartDateTime = start
-	}
-	if hasEnd {
-		req.EndDateTime = end
-	}
-	req.DateTimeFilter = hasStart && hasEnd
+
 	return nil
 }
 
 // Enabled 判断是否具备完整的时间范围过滤条件。
-func (req ReqDateTimeStartEnd) Enabled() bool {
-	return req.DateTimeFilter
+func (req *ReqDateTimeStartEnd) Enabled() bool {
+	return req.StartDateTimeStr != "" && req.EndDateTimeStr != ""
 }
 
-// Scope 根据字段名生成对应的 GORM Scope。
-func (req ReqDateTimeStartEnd) Scope(column field.IColumnName) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		if !req.Enabled() {
-			return db
-		}
-		return db.Where(column.ColumnName()+" BETWEEN ? AND ?", req.StartDateTime.Time(), req.EndDateTime.Time())
+func (req *ReqDateTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
 	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Gte(req.StartDateTime),
+		filed.Lte(req.EndDateTime),
+	}, nil
 }
 
 type ReqDateTime struct {
@@ -64,8 +61,22 @@ func (req *ReqDateTime) Parse() error {
 		}
 		req.DateTime = s
 	}
-
 	return nil
+}
+func (req *ReqDateTime) Enabled() bool {
+	return req.DateTimeStr != ""
+}
+
+func (req *ReqDateTime) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
+	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Eq(req.DateTime),
+	}, nil
 }
 
 type ReqDateStartEnd struct {
@@ -74,43 +85,39 @@ type ReqDateStartEnd struct {
 
 	StartDate DateOnly `json:"-" form:"-"`
 	EndDate   DateOnly `json:"-" form:"-"`
-
-	DateFilter bool `json:"-"`
 }
 
 // Parse 用来解析日期范围参数。
 func (req *ReqDateStartEnd) Parse() error {
-	start, hasStart, err := parseOptional(req.StartDateStr, ParseDateOnly)
+	var err error
+	req.StartDate, err = parseOptional(req.StartDateStr, ParseDateOnly)
 	if err != nil {
 		return err
 	}
-	end, hasEnd, err := parseOptional(req.EndDateStr, ParseDateOnly)
+	req.EndDate, err = parseOptional(req.EndDateStr, ParseDateOnly)
 	if err != nil {
 		return err
 	}
-	if hasStart {
-		req.StartDate = start
-	}
-	if hasEnd {
-		req.EndDate = end
-	}
-	req.DateFilter = hasStart && hasEnd
+
 	return nil
 }
 
 // Enabled 判断是否启用日期范围过滤。
-func (req ReqDateStartEnd) Enabled() bool {
-	return req.DateFilter
+func (req *ReqDateStartEnd) Enabled() bool {
+	return req.StartDateStr != "" && req.EndDateStr != ""
 }
 
-// Scope 返回针对指定字段的日期范围 Scope。
-func (req ReqDateStartEnd) Scope(column field.IColumnName) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		if !req.Enabled() {
-			return db
-		}
-		return db.Where(column.ColumnName()+" BETWEEN ? AND ?", req.StartDate.Time(), req.EndDate.Time())
+func (req *ReqDateStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
 	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Gte(req.StartDate),
+		filed.Lte(req.EndDate),
+	}, nil
 }
 
 type ReqDate struct {
@@ -120,12 +127,25 @@ type ReqDate struct {
 
 // Parse 用来解析单个日期字符串。
 func (req *ReqDate) Parse() error {
-	if value, ok, err := parseOptional(req.DateStr, ParseDateOnly); err != nil {
+	var err error
+	req.Date, err = parseOptional(req.DateStr, ParseDateOnly)
+	if err != nil {
 		return err
-	} else if ok {
-		req.Date = value
 	}
 	return nil
+}
+func (req *ReqDate) Enabled() bool {
+	return req.DateStr != ""
+}
+
+func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
+	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return GenNewTimeIsDateOnly(table, filed, req.Date), nil
 }
 
 type ReqTimeStartEnd struct {
@@ -134,43 +154,36 @@ type ReqTimeStartEnd struct {
 
 	StartTime TimeOnly `json:"-" form:"-"`
 	EndTime   TimeOnly `json:"-" form:"-"`
-
-	TimeFilter bool `json:"-"`
 }
 
 // Parse 用来解析起止时间并设置 TimeFilter。
 func (req *ReqTimeStartEnd) Parse() error {
-	start, hasStart, err := parseOptional(req.StartTimeStr, ParseTimeOnly)
+	var err error
+	req.StartTime, err = parseOptional(req.StartTimeStr, ParseTimeOnly)
 	if err != nil {
 		return err
 	}
-	end, hasEnd, err := parseOptional(req.EndTimeStr, ParseTimeOnly)
-	if err != nil {
-		return err
-	}
-	if hasStart {
-		req.StartTime = start
-	}
-	if hasEnd {
-		req.EndTime = end
-	}
-	req.TimeFilter = hasStart && hasEnd
+	req.EndTime, err = parseOptional(req.EndTimeStr, ParseTimeOnly)
+
 	return nil
 }
 
 // Enabled 判断是否启用具体时间的范围过滤。
-func (req ReqTimeStartEnd) Enabled() bool {
-	return req.TimeFilter
+func (req *ReqTimeStartEnd) Enabled() bool {
+	return req.StartTimeStr != "" && req.EndTimeStr != ""
 }
 
-// Scope 返回针对时分秒字段的范围查询 Scope。
-func (req ReqTimeStartEnd) Scope(column field.IColumnName) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		if !req.Enabled() {
-			return db
-		}
-		return db.Where(column.ColumnName()+" BETWEEN ? AND ?", req.StartTime.Time(), req.EndTime.Time())
+func (req *ReqTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
 	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Gte(req.StartTime),
+		filed.Lte(req.EndTime),
+	}, nil
 }
 
 type ReqTime struct {
@@ -180,12 +193,25 @@ type ReqTime struct {
 
 // Parse 用来解析单个时间值。
 func (req *ReqTime) Parse() error {
-	if value, ok, err := parseOptional(req.TimeStr, ParseTimeOnly); err != nil {
+	var err error
+	req.Time, err = parseOptional(req.TimeStr, ParseTimeOnly)
+	if err != nil {
 		return err
-	} else if ok {
-		req.Time = value
 	}
 	return nil
+}
+func (req *ReqTime) Enabled() bool {
+	return req.TimeStr != ""
+}
+
+func (req *ReqTime) GenWhereFilters(filed field.Field) (gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
+	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return filed.Eq(req.Time), nil
 }
 
 type ReqTimeHourMinuteStartEnd struct {
@@ -194,43 +220,39 @@ type ReqTimeHourMinuteStartEnd struct {
 
 	StartTimeHourMinute TimeHourMinute `json:"-" form:"-"`
 	EndTimeHourMinute   TimeHourMinute `json:"-" form:"-"`
-
-	TimeHourMinuteFilter bool `json:"-"`
 }
 
 // Parse 用来解析起止的时分参数。
 func (req *ReqTimeHourMinuteStartEnd) Parse() error {
-	start, hasStart, err := parseOptional(req.StartTimeHourMinuteStr, ParseHourMinute)
+	var err error
+	req.StartTimeHourMinute, err = parseOptional(req.StartTimeHourMinuteStr, ParseHourMinute)
 	if err != nil {
 		return err
 	}
-	end, hasEnd, err := parseOptional(req.EndTimeHourMinuteStr, ParseHourMinute)
+	req.EndTimeHourMinute, err = parseOptional(req.EndTimeHourMinuteStr, ParseHourMinute)
 	if err != nil {
 		return err
 	}
-	if hasStart {
-		req.StartTimeHourMinute = start
-	}
-	if hasEnd {
-		req.EndTimeHourMinute = end
-	}
-	req.TimeHourMinuteFilter = hasStart && hasEnd
+
 	return nil
 }
 
 // Enabled 判断时分范围过滤是否生效。
-func (req ReqTimeHourMinuteStartEnd) Enabled() bool {
-	return req.TimeHourMinuteFilter
+func (req *ReqTimeHourMinuteStartEnd) Enabled() bool {
+	return req.StartTimeHourMinuteStr != "" && req.EndTimeHourMinuteStr != ""
 }
 
-// Scope 返回针对时分字段的范围查询 Scope。
-func (req ReqTimeHourMinuteStartEnd) Scope(column field.IColumnName) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		if !req.Enabled() {
-			return db
-		}
-		return db.Where(column.ColumnName()+" BETWEEN ? AND ?", req.StartTimeHourMinute.Time(), req.EndTimeHourMinute.Time())
+func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
 	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Gte(req.StartTimeHourMinute),
+		filed.Lte(req.EndTimeHourMinute),
+	}, nil
 }
 
 type ReqTimeHourMinute struct {
@@ -240,23 +262,40 @@ type ReqTimeHourMinute struct {
 
 // Parse 用来解析单个时分字符串。
 func (req *ReqTimeHourMinute) Parse() error {
-	if value, ok, err := parseOptional(req.TimeHourMinuteStr, ParseHourMinute); err != nil {
+	var err error
+	req.TimeHourMinute, err = parseOptional(req.TimeHourMinuteStr, ParseHourMinute)
+	if err != nil {
 		return err
-	} else if ok {
-		req.TimeHourMinute = value
 	}
 
 	return nil
 }
 
-func parseOptional[T any](raw string, parse func(string) (T, error)) (value T, ok bool, err error) {
+// Enabled 判断时分范围过滤是否生效。
+func (req *ReqTimeHourMinute) Enabled() bool {
+	return req.TimeHourMinuteStr != ""
+}
+
+func (req *ReqTimeHourMinute) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+	if err := req.Parse(); err != nil {
+		return nil, err
+	}
+	if !req.Enabled() {
+		return nil, nil
+	}
+	return []gen.Condition{
+		filed.Eq(req.TimeHourMinute),
+	}, nil
+}
+
+func parseOptional[T any](raw string, parse func(string) (T, error)) (value T, err error) {
 	if raw == "" {
-		return value, false, nil
+		return value, nil
 	}
 	parsed, err := parse(raw)
 	if err != nil {
 		var zero T
-		return zero, false, err
+		return zero, err
 	}
-	return parsed, true, nil
+	return parsed, nil
 }
