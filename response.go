@@ -78,6 +78,72 @@ var (
 	// ... 可以继续添加其他预定义错误
 )
 
+func ErrRequestExternalServiceMsg(err error, args ...any) *AppError {
+	return ErrRequestExternalService.WithMessage(err.Error(), args...)
+}
+func ErrRequestWechatMsg(err error, args ...any) *AppError {
+	return ErrRequestWechat.WithMessage(err.Error(), args...)
+}
+func ErrRequestWechatPayMsg(err error, args ...any) *AppError {
+	return ErrRequestWechatPay.WithMessage(err.Error(), args...)
+}
+func ErrRequestAliMsg(err error, args ...any) *AppError {
+	return ErrRequestAli.WithMessage(err.Error(), args...)
+}
+func ErrRequestAliPayMsg(err error, args ...any) *AppError {
+	return ErrRequestAliPay.WithMessage(err.Error(), args...)
+}
+
+func ErrBadRequestMsg(err error, args ...any) *AppError {
+	return ErrBadRequest.WithMessage(err.Error(), args...)
+}
+func ErrInvalidParamMsg(err error, args ...any) *AppError {
+	return ErrInvalidParam.WithMessage(err.Error(), args...)
+}
+func ErrTokenInvalidMsg(err error, args ...any) *AppError {
+	return ErrTokenInvalid.WithMessage(err.Error(), args...)
+}
+
+func ErrUnauthorizedMsg(err error, args ...any) *AppError {
+	return ErrUnauthorized.WithMessage(err.Error(), args...)
+}
+
+func ErrForbiddenAuthMsg(err error, args ...any) *AppError {
+	return ErrForbiddenAuth.WithMessage(err.Error(), args...)
+}
+func ErrUserDisabledMsg(err error, args ...any) *AppError {
+	return ErrUserDisabled.WithMessage(err.Error(), args...)
+}
+
+func ErrNotFoundMsg(err error, args ...any) *AppError {
+	return ErrNotFound.WithMessage(err.Error(), args...)
+}
+
+func ErrDataExistsMsg(err error, args ...any) *AppError {
+	return ErrDataExists.WithMessage(err.Error(), args...)
+}
+func ErrUniqueIndexConflictMsg(err error, args ...any) *AppError {
+	return ErrUniqueIndexConflict.WithMessage(err.Error(), args...)
+}
+
+func ErrServerBusyMsg(err error, args ...any) *AppError {
+	return ErrServerBusy.WithMessage(err.Error(), args...)
+}
+func ErrDatabaseMsg(err error, args ...any) *AppError {
+	return ErrDatabase.WithMessage(err.Error(), args...)
+}
+func ErrRedisMsg(err error, args ...any) *AppError {
+	return ErrRedis.WithMessage(err.Error(), args...)
+}
+
+func EncryptErrMsg(err error, args ...any) *AppError {
+	return EncryptErr.WithMessage(err.Error(), args...)
+}
+
+func ErrIsAppErr(err error, appErr *AppError) bool {
+	return ConvertToAppError(err).Code == appErr.Code
+}
+
 // ReturnErrDatabase 将数据库错误映射成业务错误并处理未找到情况。
 func ReturnErrDatabase(err error, msg string, notfoundMsg ...string) *AppError {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -87,16 +153,6 @@ func ReturnErrDatabase(err error, msg string, notfoundMsg ...string) *AppError {
 		return ErrNotFound.WithMessage(notfoundMsg[0])
 	}
 	return ErrDatabase.WithMessage(msg)
-}
-
-// ReturnErrSimpleDatabase 直接用数据库错误信息创建 AppError。
-func ReturnErrSimpleDatabase(err error) *AppError {
-	return ErrDatabase.WithMessage(err.Error())
-}
-
-// ReturnErrInvalidParam 返回附带自定义描述的参数错误。
-func ReturnErrInvalidParam(msg string) *AppError {
-	return ErrInvalidParam.WithMessage(msg)
 }
 
 // ConvertToAppError 把任意错误转换成统一的业务错误模型。
@@ -147,7 +203,6 @@ func ResponseError(c *gin.Context, err error) {
 	appErr := ConvertToAppError(err)
 	c.Set("resp-status", appErr.Code)
 	c.Set("resp-msg", appErr.Message)
-	setTraceHeaders(c)
 	c.JSON(http.StatusOK, &Response{
 		Code:    appErr.Code,
 		Message: appErr.Message,
@@ -159,7 +214,6 @@ func ResponseParamError(c *gin.Context, err error) {
 	te := TranslateError(err).Error()
 	c.Set("resp-status", ErrInvalidParam.Code)
 	c.Set("resp-msg", te)
-	setTraceHeaders(c)
 	if te == "" {
 		te = ErrInvalidParam.Message
 	}
@@ -173,7 +227,6 @@ func ResponseParamError(c *gin.Context, err error) {
 func ResponseSuccess(c *gin.Context, data interface{}) {
 	c.Set("resp-status", http.StatusOK)
 	c.Set("resp-msg", "请求成功")
-	setTraceHeaders(c)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
 		Message: "请求成功",
@@ -185,7 +238,6 @@ func ResponseSuccess(c *gin.Context, data interface{}) {
 func ResponseSuccessEncryptData(c *gin.Context, data interface{}, custom func(now int64) (key, nonce string)) {
 	c.Set("resp-status", http.StatusOK)
 	c.Set("resp-msg", "请求成功")
-	setTraceHeaders(c)
 	response, err := EncryptData(data, custom)
 	if err != nil {
 		c.JSON(http.StatusOK, &Response{
@@ -206,27 +258,12 @@ func ResponseThirdPartyHTTPBody(c *gin.Context, body any, code ...int) {
 	if len(code) == 0 {
 		code = append(code, 200)
 	}
-	setTraceHeaders(c)
 	c.JSON(code[0], body)
 }
 
-// FuncErr 执行函数并把错误统一为数据库错误。
-func FuncErr(fun func() error) error {
-	if err := fun(); err != nil {
-		return ReturnErrSimpleDatabase(err)
+func ReturnAppErr(fn func() error) error {
+	if err := fn(); err != nil {
+		return ConvertToAppError(err)
 	}
 	return nil
-}
-
-// setTraceHeaders 将 trace id 写入返回头部以便链路追踪。
-func setTraceHeaders(c *gin.Context) {
-	traceID := c.GetString("trace_id")
-	if traceID == "" {
-		traceID = c.GetHeader(TraceIDHeader)
-	}
-	if traceID == "" {
-		return
-	}
-	c.Header(TraceIDHeader, traceID)
-	c.Header("X-Request-Id", traceID)
 }
