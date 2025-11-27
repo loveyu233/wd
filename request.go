@@ -3,23 +3,67 @@ package wd
 import (
 	"fmt"
 	"mime/multipart"
+	"strings"
 	"sync"
+
+	"gorm.io/gen"
+	"gorm.io/gen/field"
 )
 
-// ReqKeywordAssembly 用来把关键字包装成模糊查询格式。
-func ReqKeywordAssembly(keyword string) string {
-	return fmt.Sprintf("%%%s%%", keyword)
+type ReqKeyword struct {
+	Keyword     string `json:"keyword" form:"keyword"`
+	keywordLike string
 }
 
-// ReqPageSize 用来校正页码、页大小并计算偏移量。
-func ReqPageSize(page, size int) (int, int) {
-	if page <= 0 {
-		page = 1
+func (req *ReqKeyword) parse() {
+	req.keywordLike = fmt.Sprintf("%%%s%%", req.Keyword)
+}
+func (req *ReqKeyword) KeywordLikeValue() string {
+	req.parse()
+	return req.keywordLike
+}
+func (req *ReqKeyword) GenWhereFilters(columns field.String) gen.Condition {
+	req.Keyword = strings.TrimSpace(req.Keyword)
+	if req.Keyword == "" {
+		return nil
 	}
-	if size <= 0 || size > 50 {
-		size = 20
+	req.parse()
+
+	return columns.Like(req.keywordLike)
+}
+
+type ReqPageSize struct {
+	Page        int `json:"page" form:"page"`
+	Size        int `json:"size" form:"size"`
+	offsetValue int
+}
+
+func (req *ReqPageSize) parse(defaultSize ...int) {
+	if len(defaultSize) == 0 {
+		defaultSize = []int{20}
 	}
-	return page, (page - 1) * size
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.Size <= 0 || req.Size > 50 {
+		req.Size = defaultSize[0]
+	}
+	req.offsetValue = (req.Page - 1) * req.Size
+}
+
+//func (req *ReqPageSize) GenWhereFilters(do gen.Dao) gen.Dao {
+//	req.parse()
+//	return do.Limit(req.Size).Offset(req.offsetValue)
+//}
+
+func (req *ReqPageSize) Limit() int {
+	req.parse()
+	return req.Size
+}
+
+func (req *ReqPageSize) Offset() int {
+	req.parse()
+	return req.offsetValue
 }
 
 // ReqFileUploadGoroutine 用来并发上传多文件并收集结果。
