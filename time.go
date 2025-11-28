@@ -417,50 +417,60 @@ type TimeRange struct {
 	End   time.Time
 }
 
-// IsValid 判断时间段的开始是否早于结束。
+// IsValid 检查时间段是否有效
 func (tr TimeRange) IsValid() bool {
 	return !tr.Start.After(tr.End)
 }
 
-// Overlaps 判断两个时间段是否交叉。
-func (tr TimeRange) Overlaps(other TimeRange) bool {
+// HasConflictWith 检查当前时间段是否与另一个时间段冲突
+func (tr TimeRange) HasConflictWith(other TimeRange) bool {
 	if !tr.IsValid() || !other.IsValid() {
 		return false
 	}
 	return tr.Start.Before(other.End) && tr.End.After(other.Start)
 }
 
-// TimeRangesConflict 检查多个时间段是否存在冲突。
-func TimeRangesConflict(ranges ...TimeRange) bool {
-	if len(ranges) < 2 {
+// HasTimeConflict 检查多个时间段之间是否有冲突
+// 参数: 可变数量的TimeRange，每个TimeRange包含开始时间和结束时间
+// 返回 true 表示存在冲突，false 表示无冲突
+func HasTimeConflict(timeRanges ...TimeRange) bool {
+	// 如果时间段数量少于2个，不可能有冲突
+	if len(timeRanges) < 2 {
 		return false
 	}
-	for i := 0; i < len(ranges); i++ {
-		for j := i + 1; j < len(ranges); j++ {
-			if ranges[i].Overlaps(ranges[j]) {
+
+	// 检查每一对时间段是否冲突
+	for i := 0; i < len(timeRanges); i++ {
+		for j := i + 1; j < len(timeRanges); j++ {
+			if timeRanges[i].HasConflictWith(timeRanges[j]) {
 				return true
 			}
 		}
 	}
+
 	return false
 }
 
-// ConflictTimeRangeIDs 返回存在冲突的时间段 ID 集合。
-func ConflictTimeRangeIDs(ranges ...TimeRange) []uint64 {
-	overlapping := make(map[uint64]struct{})
+func HasTimeConflictReturnIDS(ranges ...TimeRange) []uint64 {
+	overlappingIDs := make(map[uint64]bool)
+
 	for i := 0; i < len(ranges); i++ {
 		for j := i + 1; j < len(ranges); j++ {
-			if ranges[i].Overlaps(ranges[j]) {
-				overlapping[ranges[i].ID] = struct{}{}
-				overlapping[ranges[j].ID] = struct{}{}
+			// 检查时间重合条件
+			if ranges[i].Start.Before(ranges[j].End) && ranges[i].End.After(ranges[j].Start) {
+				overlappingIDs[ranges[i].ID] = true
+				overlappingIDs[ranges[j].ID] = true
 			}
 		}
 	}
-	var ids []uint64
-	for id := range overlapping {
-		ids = append(ids, id)
+
+	// 转换为切片
+	var result []uint64
+	for id := range overlappingIDs {
+		result = append(result, id)
 	}
-	return ids
+
+	return result
 }
 
 func beginningOfDay(t time.Time) time.Time {
@@ -477,4 +487,27 @@ func beginningOfYear(t time.Time) time.Time {
 
 func buildRange(start, end time.Time) (DateTime, DateTime) {
 	return DateTime(start), DateTime(end)
+}
+
+// GetDay 获取指定时间t的天数
+func GetDay(t time.Time) int {
+	y, m, d := t.Date()
+	dayOfYear := time.Date(y, m, d, 0, 0, 0, 0, ShangHaiTimeLocation).YearDay()
+	return y*365 + y/4 - y/100 + y/400 + dayOfYear
+}
+
+// GetCalculationDay 用于获取时间经过指定的计算后的结果值
+func GetCalculationDay(dateOnly DateOnly, period string) uint32 {
+	day := GetDay(dateOnly.Time()) * 4
+	switch period {
+	case "早上":
+		day += 1
+	case "上午":
+		day += 2
+	case "下午":
+		day += 3
+	case "晚上":
+		day += 4
+	}
+	return uint32(day)
 }

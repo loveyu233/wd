@@ -2,6 +2,7 @@ package wd
 
 import (
 	"fmt"
+	"io"
 	"mime/multipart"
 	"strings"
 	"sync"
@@ -104,4 +105,91 @@ func ReqFileUploadGoroutine(files []*multipart.FileHeader, uploadFileFunc func(f
 	group.Wait()
 
 	return fileURLS, errs
+}
+
+type ReqFile struct {
+	File *multipart.FileHeader `json:"file" form:"file"`
+
+	file      multipart.File
+	fileBytes []byte
+	isParse   bool
+	isRead    bool
+}
+
+func (r *ReqFile) Enable() bool {
+	return r.File != nil
+}
+
+func (r *ReqFile) parse() error {
+	if !r.Enable() {
+		return ErrNotFound.WithMessage("文件不存在")
+	}
+	var err error
+	r.file, err = r.File.Open()
+	if err != nil {
+		return ErrDataExistsMsg(err)
+	}
+	r.isParse = true
+	return nil
+}
+func (r *ReqFile) FileContent() ([]byte, error) {
+	if !r.isParse {
+		err := r.parse()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if r.isRead {
+		return r.fileBytes, nil
+	}
+	var err error
+	r.fileBytes, err = io.ReadAll(r.file)
+	if err != nil {
+		return nil, ErrDataExistsMsg(err)
+	}
+	return r.fileBytes, nil
+}
+
+func (r *ReqFile) GetFileContentType() (string, error) {
+	if !r.isParse {
+		err := r.parse()
+		if err != nil {
+			return "", err
+		}
+	}
+	if r.isRead {
+		return GetFileContentType(r.fileBytes), nil
+	}
+	var err error
+	r.fileBytes, err = io.ReadAll(r.file)
+	if err != nil {
+		return "", ErrDataExistsMsg(err)
+	}
+	r.isRead = true
+	return GetFileContentType(r.fileBytes), nil
+}
+
+func (r *ReqFile) GetFileNameType() (string, error) {
+	if !r.Enable() {
+		return "", ErrNotFound.WithMessage("文件不存在")
+	}
+	return GetFileNameType(r.File.Filename), nil
+}
+
+func (r *ReqFile) GetFileSize() (int64, error) {
+	if !r.Enable() {
+		return 0, ErrNotFound.WithMessage("文件不存在")
+	}
+	return r.File.Size, nil
+}
+
+func (r *ReqFile) UploadFile(uploadFileFunc func(file *multipart.FileHeader) (string, error)) (string, error) {
+	urls, errs := ReqFileUploadGoroutine([]*multipart.FileHeader{r.File}, uploadFileFunc)
+	if len(errs) > 0 {
+		return "", errs[0]
+	}
+	if len(urls) > 0 {
+		return urls[0], nil
+	}
+	return "", ErrNotFound.WithMessage("上传文件失败")
 }
