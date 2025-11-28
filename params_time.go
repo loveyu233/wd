@@ -12,17 +12,41 @@ type ReqDateTimeStartEnd struct {
 
 	startDateTime DateTime
 	endDateTime   DateTime
+	isParse       bool
 }
 
-func (req *ReqDateTimeStartEnd) GetStartAndEndDateTime() (start DateTime, end DateTime, err error) {
-	if err := req.Parse(); err != nil {
-		return DateTime{}, DateTime{}, err
+func (req *ReqDateTimeStartEnd) SetStartDateTime(startDateTime string) error {
+	req.isParse = false
+	req.StartDateTime = startDateTime
+	return req.parse()
+}
+
+func (req *ReqDateTimeStartEnd) SetEndDateTime(endDateTime string) error {
+	req.isParse = false
+	req.EndDateTime = endDateTime
+	return req.parse()
+}
+
+func (req *ReqDateTimeStartEnd) GetStartDateTime() (DateTime, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateTime{}, err
+		}
 	}
-	return req.startDateTime, req.endDateTime, nil
+	return req.startDateTime, nil
+}
+
+func (req *ReqDateTimeStartEnd) GetEndDateTime() (DateTime, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateTime{}, err
+		}
+	}
+	return req.endDateTime, nil
 }
 
 // Parse 用来解析开始与结束的日期时间并设置过滤标记。
-func (req *ReqDateTimeStartEnd) Parse() error {
+func (req *ReqDateTimeStartEnd) parse() error {
 	var err error
 	req.startDateTime, err = parseOptional(req.StartDateTime, ParseDateTimeValue)
 	if err != nil {
@@ -32,6 +56,7 @@ func (req *ReqDateTimeStartEnd) Parse() error {
 	if err != nil {
 		return err
 	}
+	req.isParse = true
 
 	return nil
 }
@@ -42,8 +67,10 @@ func (req *ReqDateTimeStartEnd) Enabled() bool {
 }
 
 func (req *ReqDateTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -56,18 +83,28 @@ func (req *ReqDateTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condit
 
 type ReqDateTime struct {
 	DateTime string `json:"date_time" form:"date_time"`
+
 	dateTime DateTime
+	isParse  bool
+}
+
+func (req *ReqDateTime) SetDateTime(dateTime string) error {
+	req.isParse = false
+	req.DateTime = dateTime
+	return req.parse()
 }
 
 func (req *ReqDateTime) GetDateTime() (DateTime, error) {
-	if err := req.Parse(); err != nil {
-		return DateTime{}, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateTime{}, err
+		}
 	}
 	return req.dateTime, nil
 }
 
 // Parse 用来解析单个日期时间字符串。
-func (req *ReqDateTime) Parse() error {
+func (req *ReqDateTime) parse() error {
 	if req.DateTime != "" {
 		s, err := ParseDateTimeValue(req.DateTime)
 		if err != nil {
@@ -75,15 +112,19 @@ func (req *ReqDateTime) Parse() error {
 		}
 		req.dateTime = s
 	}
+	req.isParse = true
 	return nil
 }
+
 func (req *ReqDateTime) Enabled() bool {
 	return req.DateTime != ""
 }
 
 func (req *ReqDateTime) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -99,17 +140,41 @@ type ReqDateStartEnd struct {
 
 	startDate DateOnly
 	endDate   DateOnly
+	isParse   bool
 }
 
-func (req *ReqDateStartEnd) GetStartAndEndDate() (DateOnly, DateOnly, bool) {
-	if err := req.Parse(); err != nil {
-		return DateOnly{}, DateOnly{}, false
+func (req *ReqDateStartEnd) SetStartDate(startDate string) error {
+	req.isParse = false
+	req.StartDate = startDate
+	return req.parse()
+}
+
+func (req *ReqDateStartEnd) SetEndDate(endDate string) error {
+	req.isParse = false
+	req.EndDate = endDate
+	return req.parse()
+}
+
+func (req *ReqDateStartEnd) GetStartDate() (DateOnly, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateOnly{}, err
+		}
 	}
-	return req.startDate, req.endDate, req.Enabled()
+	return req.startDate, nil
+}
+
+func (req *ReqDateStartEnd) GetEndDate() (DateOnly, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateOnly{}, err
+		}
+	}
+	return req.endDate, nil
 }
 
 // Parse 用来解析日期范围参数。
-func (req *ReqDateStartEnd) Parse() error {
+func (req *ReqDateStartEnd) parse() error {
 	var err error
 	req.startDate, err = parseOptional(req.StartDate, ParseDateOnly)
 	if err != nil {
@@ -119,7 +184,7 @@ func (req *ReqDateStartEnd) Parse() error {
 	if err != nil {
 		return err
 	}
-
+	req.isParse = true
 	return nil
 }
 
@@ -129,8 +194,10 @@ func (req *ReqDateStartEnd) Enabled() bool {
 }
 
 func (req *ReqDateStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -143,23 +210,33 @@ func (req *ReqDateStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition,
 
 type ReqDate struct {
 	Date string `json:"date" form:"date"`
-	date DateOnly
+
+	date    DateOnly
+	isParse bool
 }
 
+func (req *ReqDate) SetDate(date string) error {
+	req.isParse = false
+	req.Date = date
+	return req.parse()
+}
 func (req *ReqDate) GetDate() (DateOnly, error) {
-	if err := req.Parse(); err != nil {
-		return DateOnly{}, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return DateOnly{}, err
+		}
 	}
 	return req.date, nil
 }
 
 // Parse 用来解析单个日期字符串。
-func (req *ReqDate) Parse() error {
+func (req *ReqDate) parse() error {
 	var err error
 	req.date, err = parseOptional(req.Date, ParseDateOnly)
 	if err != nil {
 		return err
 	}
+	req.isParse = true
 	return nil
 }
 func (req *ReqDate) Enabled() bool {
@@ -167,8 +244,10 @@ func (req *ReqDate) Enabled() bool {
 }
 
 func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -182,24 +261,48 @@ type ReqTimeStartEnd struct {
 
 	startTime TimeOnly
 	endTime   TimeOnly
+	isParse   bool
 }
 
-func (req *ReqTimeStartEnd) GetStartAndEndTime() (TimeOnly, TimeOnly, bool) {
-	if err := req.Parse(); err != nil {
-		return TimeOnly{}, TimeOnly{}, false
+func (req *ReqTimeStartEnd) SetStartTime(startTime string) error {
+	req.isParse = false
+	req.StartTime = startTime
+	return req.parse()
+}
+
+func (req *ReqTimeStartEnd) SetEndTime(endTime string) error {
+	req.isParse = false
+	req.EndTime = endTime
+	return req.parse()
+}
+
+func (req *ReqTimeStartEnd) GetStartTime() (TimeOnly, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeOnly{}, err
+		}
 	}
-	return req.startTime, req.endTime, req.Enabled()
+	return req.startTime, nil
+}
+
+func (req *ReqTimeStartEnd) GetEndTime() (TimeOnly, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeOnly{}, err
+		}
+	}
+	return req.endTime, nil
 }
 
 // Parse 用来解析起止时间并设置 TimeFilter。
-func (req *ReqTimeStartEnd) Parse() error {
+func (req *ReqTimeStartEnd) parse() error {
 	var err error
 	req.startTime, err = parseOptional(req.StartTime, ParseTimeOnly)
 	if err != nil {
 		return err
 	}
 	req.endTime, err = parseOptional(req.EndTime, ParseTimeOnly)
-
+	req.isParse = true
 	return nil
 }
 
@@ -209,8 +312,10 @@ func (req *ReqTimeStartEnd) Enabled() bool {
 }
 
 func (req *ReqTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -223,23 +328,34 @@ func (req *ReqTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition,
 
 type ReqTime struct {
 	Time string `json:"time" form:"time"`
-	time TimeOnly
+
+	time    TimeOnly
+	isParse bool
+}
+
+func (req *ReqTime) SetTime(time string) error {
+	req.isParse = false
+	req.Time = time
+	return req.parse()
 }
 
 func (req *ReqTime) GetTime() (TimeOnly, error) {
-	if err := req.Parse(); err != nil {
-		return TimeOnly{}, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeOnly{}, err
+		}
 	}
 	return req.time, nil
 }
 
 // Parse 用来解析单个时间值。
-func (req *ReqTime) Parse() error {
+func (req *ReqTime) parse() error {
 	var err error
 	req.time, err = parseOptional(req.Time, ParseTimeOnly)
 	if err != nil {
 		return err
 	}
+	req.isParse = true
 	return nil
 }
 func (req *ReqTime) Enabled() bool {
@@ -247,8 +363,10 @@ func (req *ReqTime) Enabled() bool {
 }
 
 func (req *ReqTime) GenWhereFilters(filed field.Field) (gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -262,17 +380,41 @@ type ReqTimeHourMinuteStartEnd struct {
 
 	startTimeHourMinute TimeHourMinute
 	endTimeHourMinute   TimeHourMinute
+	isParse             bool
 }
 
-func (req *ReqTimeHourMinuteStartEnd) GetStartAndEndTimeHourMinute() (TimeHourMinute, TimeHourMinute, bool) {
-	if err := req.Parse(); err != nil {
-		return TimeHourMinute{}, TimeHourMinute{}, false
+func (req *ReqTimeHourMinuteStartEnd) SetStartTimeHourMinute(startTimeHourMinute string) error {
+	req.isParse = false
+	req.StartTimeHourMinute = startTimeHourMinute
+	return req.parse()
+}
+
+func (req *ReqTimeHourMinuteStartEnd) SetEndTimeHourMinute(endTimeHourMinute string) error {
+	req.isParse = false
+	req.EndTimeHourMinute = endTimeHourMinute
+	return req.parse()
+}
+
+func (req *ReqTimeHourMinuteStartEnd) GetStartDateTime() (TimeHourMinute, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeHourMinute{}, err
+		}
 	}
-	return req.startTimeHourMinute, req.endTimeHourMinute, req.Enabled()
+	return req.startTimeHourMinute, nil
+}
+
+func (req *ReqTimeHourMinuteStartEnd) GetEndDateTime() (TimeHourMinute, error) {
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeHourMinute{}, err
+		}
+	}
+	return req.endTimeHourMinute, nil
 }
 
 // Parse 用来解析起止的时分参数。
-func (req *ReqTimeHourMinuteStartEnd) Parse() error {
+func (req *ReqTimeHourMinuteStartEnd) parse() error {
 	var err error
 	req.startTimeHourMinute, err = parseOptional(req.StartTimeHourMinute, ParseHourMinute)
 	if err != nil {
@@ -282,7 +424,7 @@ func (req *ReqTimeHourMinuteStartEnd) Parse() error {
 	if err != nil {
 		return err
 	}
-
+	req.isParse = true
 	return nil
 }
 
@@ -292,8 +434,10 @@ func (req *ReqTimeHourMinuteStartEnd) Enabled() bool {
 }
 
 func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
@@ -306,24 +450,34 @@ func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(filed field.Field) ([]gen.
 
 type ReqTimeHourMinute struct {
 	TimeHourMinute string `json:"time_hour_minute" form:"time_hour_minute"`
+
 	timeHourMinute TimeHourMinute
+	isParse        bool
+}
+
+func (req *ReqTimeHourMinute) SetTimeHourMinute(timeHourMinute string) error {
+	req.isParse = false
+	req.TimeHourMinute = timeHourMinute
+	return req.parse()
 }
 
 func (req *ReqTimeHourMinute) GetTimeHourMinute() (TimeHourMinute, error) {
-	if err := req.Parse(); err != nil {
-		return TimeHourMinute{}, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return TimeHourMinute{}, err
+		}
 	}
 	return req.timeHourMinute, nil
 }
 
 // Parse 用来解析单个时分字符串。
-func (req *ReqTimeHourMinute) Parse() error {
+func (req *ReqTimeHourMinute) parse() error {
 	var err error
 	req.timeHourMinute, err = parseOptional(req.TimeHourMinute, ParseHourMinute)
 	if err != nil {
 		return err
 	}
-
+	req.isParse = true
 	return nil
 }
 
@@ -333,8 +487,10 @@ func (req *ReqTimeHourMinute) Enabled() bool {
 }
 
 func (req *ReqTimeHourMinute) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
-	if err := req.Parse(); err != nil {
-		return nil, err
+	if !req.isParse {
+		if err := req.parse(); err != nil {
+			return nil, err
+		}
 	}
 	if !req.Enabled() {
 		return nil, nil
