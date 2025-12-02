@@ -95,8 +95,3 @@ func GetGenderFormIDCard(idcard string) string {
 	}
 	return "男"
 }
-
-// KeywordAssembly 用来构造 SQL 模糊搜索的关键字。
-func KeywordAssembly(keyword string) string {
-	return fmt.Sprintf("%%%s%%", keyword)
-}
