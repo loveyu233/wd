@@ -1,9 +1,12 @@
 package wd
 
 import (
+	"strings"
+
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
+	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -65,4 +68,19 @@ func (e *CachedEnforcer) InitCasbinRule(mandatory ...bool) error {
 func (e *CachedEnforcer) CachedEnforce(sub, obj, act string) bool {
 	enforce, _ := e.Enforce(sub, obj, act)
 	return enforce
+}
+
+// GinMiddleware gin的中间件，用于检查用户权限，请求的url path会过滤掉http配置中prefix前缀
+func (e *CachedEnforcer) GinMiddleware(getSubFunc func(c *gin.Context) (string, error)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sub, err := getSubFunc(c)
+		if err != nil {
+			ResponseError(c, err)
+			c.Abort()
+		}
+		if !InsCachedEnforcer.CachedEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method) {
+			ResponseError(c, ErrForbiddenAuth)
+			c.Abort()
+		}
+	}
 }

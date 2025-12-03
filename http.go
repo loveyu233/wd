@@ -12,6 +12,10 @@ type HTTPServer struct {
 	server *http.Server
 }
 
+var (
+	globalApiPrefix string
+)
+
 // InitHTTPServerAndStart 用来根据路由配置启动 HTTP 服务并注册钩子。
 func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOptionFunc) *HTTPServer {
 	var config RouterConfig
@@ -24,6 +28,7 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOptionFunc
 	if config.prefix == "" {
 		config.prefix = "/api"
 	}
+	globalApiPrefix = config.prefix
 	engine := initPrivateRouter(config)
 	server := &HTTPServer{server: &http.Server{
 		Addr:    listenAddr,
