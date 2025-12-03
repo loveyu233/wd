@@ -16,7 +16,12 @@ func ErrRecordNotFound(err error) bool {
 
 // redisClientNilErr 用来生成 Redis 客户端未初始化的错误。
 func redisClientNilErr() error {
-	return errors.New("RedisClient为空,需要先使用gb.InitRedis()进行初始化")
+	return errors.New("InsRedis为空,需要先使用gb.InitRedis()进行初始化")
+}
+
+// gormClientNilErr 用来生成 gorm 客户端未初始化的错误。
+func gormClientNilErr() error {
+	return errors.New("InsDB为空,需要先使用gb.InitGorm()进行初始化")
 }
 
 // ErrDuplicatedKey 用来判断错误是否由唯一键冲突引起。
