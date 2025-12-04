@@ -1,6 +1,8 @@
 package wd
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/casbin/casbin/v2"
@@ -10,7 +12,7 @@ import (
 )
 
 var (
-	InsCachedEnforcer *CachedEnforcer
+	InsCasbin *CachedEnforcer
 )
 
 type CachedEnforcer struct {
@@ -47,7 +49,7 @@ func InitCasbin() error {
 	if err != nil {
 		return err
 	}
-	InsCachedEnforcer = &CachedEnforcer{e}
+	InsCasbin = &CachedEnforcer{e}
 	return nil
 }
 
@@ -65,7 +67,7 @@ func (e *CachedEnforcer) InitCasbinRule(mandatory ...bool) error {
 	return InsDB.DB.AutoMigrate(gormadapter.CasbinRule{})
 }
 
-func (e *CachedEnforcer) CachedEnforce(sub, obj, act string) bool {
+func (e *CachedEnforcer) InsEnforce(sub, obj, act string) bool {
 	enforce, _ := e.Enforce(sub, obj, act)
 	return enforce
 }
@@ -78,9 +80,152 @@ func (e *CachedEnforcer) GinMiddleware(getSubFunc func(c *gin.Context) (string, 
 			ResponseError(c, err)
 			c.Abort()
 		}
-		if !InsCachedEnforcer.CachedEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method) {
+		if !InsCasbin.InsEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method) {
 			ResponseError(c, ErrForbiddenAuth)
 			c.Abort()
 		}
 	}
+}
+
+type CasbinPolicies struct {
+	Sub string
+	Obj string
+	Act string
+}
+
+// InsAddPoliciesEx 添加策略
+func (e *CachedEnforcer) InsAddPoliciesEx(cps ...CasbinPolicies) (bool, error) {
+	var cpsList = make([][]string, len(cps))
+	for i, ele := range cps {
+		cpsList[i] = []string{ele.Sub, ele.Obj, ele.Act}
+	}
+	return e.AddPoliciesEx(cpsList)
+}
+
+// InsRemovePoliciesEx 删除策略
+func (e *CachedEnforcer) InsRemovePoliciesEx(cps ...CasbinPolicies) (bool, error) {
+	var cpsList = make([][]string, len(cps))
+	for i, ele := range cps {
+		cpsList[i] = []string{ele.Sub, ele.Obj, ele.Act}
+	}
+	return e.RemovePolicies(cpsList)
+}
+
+// InsAddRolesForUser 给一个用户添加一个或者多个角色
+func (e *CachedEnforcer) InsAddRolesForUser(user string, roles ...string) (bool, error) {
+	if len(roles) == 0 {
+		return false, errors.New("roles is empty")
+	}
+
+	rulesMap, err := e.InsHasRules(roles...)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		if v := rulesMap[role]; !v {
+			return false, errors.New(fmt.Sprintf("角色%s不存在", role))
+		}
+	}
+	return e.AddRolesForUser(user, roles)
+}
+
+// InsDeleteRoleForUser 删除一个用户的角色
+func (e *CachedEnforcer) InsDeleteRoleForUser(user string, role string) (bool, error) {
+	return e.DeleteRoleForUser(user, role)
+}
+
+// InsDeleteAllRoleForUser 删除一个用户的全部角色
+func (e *CachedEnforcer) InsDeleteAllRoleForUser(user string) (bool, error) {
+	return e.DeleteRolesForUser(user)
+}
+
+// InsDeleteUser 删除用户
+func (e *CachedEnforcer) InsDeleteUser(user string) (bool, error) {
+	return e.DeleteUser(user)
+}
+
+// InsDeleteRole 删除角色
+func (e *CachedEnforcer) InsDeleteRole(role string) (bool, error) {
+	return e.DeleteRole(role)
+}
+
+// InsGetPermissionsForRole 获取角色的全部权限
+func (e *CachedEnforcer) InsGetPermissionsForRole(role string) ([]CasbinPolicies, error) {
+	rolePermissions, err := e.GetPermissionsForUser(role)
+	if err != nil {
+		return nil, err
+	}
+	var cpsList = make([]CasbinPolicies, len(rolePermissions))
+	for i, ele := range rolePermissions {
+		if len(ele) != 3 {
+			return nil, errors.New("casbin角色权限错误")
+		}
+		cpsList[i] = CasbinPolicies{
+			Sub: ele[0],
+			Obj: ele[1],
+			Act: ele[2],
+		}
+	}
+	return cpsList, nil
+}
+
+// InsGetRolesForUser 获取一个用户的全部角色
+func (e *CachedEnforcer) InsGetRolesForUser(user string) ([]string, error) {
+	rolesForUser, err := e.GetRolesForUser(user)
+	if err != nil {
+		return nil, err
+	}
+	return rolesForUser, nil
+}
+
+// InsGetUserAllInfo 获取一个用户的全部信息,key为角色，value为角色对应的权限
+func (e *CachedEnforcer) InsGetUserAllInfo(user string) (map[string][]CasbinPolicies, error) {
+	roles, err := e.InsGetRolesForUser(user)
+	if err != nil {
+		return nil, err
+	}
+	var rolePermissions = make(map[string][]CasbinPolicies)
+	role, err := e.InsGetPermissionsForRole(user)
+	if err != nil {
+		return nil, err
+	}
+	rolePermissions[user] = role
+
+	for _, role := range roles {
+		policies, err := e.InsGetPermissionsForRole(role)
+		if err != nil {
+			return nil, err
+		}
+		rolePermissions[role] = policies
+	}
+
+	return rolePermissions, nil
+}
+
+// InsHasRules 判断是否存在rules这些角色
+func (e *CachedEnforcer) InsHasRules(rules ...string) (rulesMap map[string]bool, err error) {
+	rulesMap = make(map[string]bool)
+	if len(rules) == 0 {
+		return
+	}
+
+	type ruleCount struct {
+		Role  string `gorm:"column:role"`
+		Count int64  `gorm:"column:count"`
+	}
+
+	var ruleCountList []*ruleCount
+	if err = InsDB.DB.
+		Model(&gormadapter.CasbinRule{}).
+		Where("ptype = 'p' and v0 in ?", rules).
+		Select("v0 'role', count(1) 'count' ").
+		Group("v0").
+		Find(&ruleCountList).Error; err != nil {
+		return
+	}
+
+	for _, ele := range ruleCountList {
+		rulesMap[ele.Role] = ele.Count > 0
+	}
+	return
 }
