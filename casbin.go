@@ -90,14 +90,18 @@ func (e *CachedEnforcer) GinMiddleware(getSubFunc func(c *gin.Context) (string, 
 type CasbinPolicies struct {
 	Sub string
 	Obj string
-	Act string
+	Act []string
 }
 
 // InsAddPoliciesEx 添加策略
 func (e *CachedEnforcer) InsAddPoliciesEx(cps ...CasbinPolicies) (bool, error) {
 	var cpsList = make([][]string, len(cps))
 	for i, ele := range cps {
-		cpsList[i] = []string{ele.Sub, ele.Obj, ele.Act}
+		var acts []string
+		for _, item := range ele.Act {
+			acts = append(acts, fmt.Sprintf("(%s)", item))
+		}
+		cpsList[i] = []string{ele.Sub, ele.Obj, strings.Join(acts, "|")}
 	}
 	return e.AddPoliciesEx(cpsList)
 }
@@ -106,7 +110,11 @@ func (e *CachedEnforcer) InsAddPoliciesEx(cps ...CasbinPolicies) (bool, error) {
 func (e *CachedEnforcer) InsRemovePoliciesEx(cps ...CasbinPolicies) (bool, error) {
 	var cpsList = make([][]string, len(cps))
 	for i, ele := range cps {
-		cpsList[i] = []string{ele.Sub, ele.Obj, ele.Act}
+		var acts []string
+		for _, item := range ele.Act {
+			acts = append(acts, fmt.Sprintf("(%s)", item))
+		}
+		cpsList[i] = []string{ele.Sub, ele.Obj, strings.Join(acts, "|")}
 	}
 	return e.RemovePolicies(cpsList)
 }
@@ -160,10 +168,14 @@ func (e *CachedEnforcer) InsGetPermissionsForRole(role string) ([]CasbinPolicies
 		if len(ele) != 3 {
 			return nil, errors.New("casbin角色权限错误")
 		}
+		var acts []string
+		for _, item := range strings.Split(ele[2], "|") {
+			acts = append(acts, strings.ReplaceAll(strings.ReplaceAll(item, ")", ""), "(", ""))
+		}
 		cpsList[i] = CasbinPolicies{
 			Sub: ele[0],
 			Obj: ele[1],
-			Act: ele[2],
+			Act: acts,
 		}
 	}
 	return cpsList, nil
