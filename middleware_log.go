@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/tidwall/gjson"
 )
 
 // LogEntry 表示一个日志条目
@@ -288,15 +289,22 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 
 		tracker := NewTracker()
 		c.Set(trackerKey, tracker)
-
-		c.Next()
-		if c.GetBool("skip") {
-			c.Next()
-			return
-		}
 		// 创建请求日志器
 		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
 		c.Set(string(RequestLoggerKey), requestLogger)
+
+		c.Next()
+		if c.GetBool("skip") {
+			for _, m := range tracker.Marks() {
+				WriteGinInfoLog(c, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
+					m.Name,
+					float64(m.SinceStart.Microseconds())/1000,
+					float64(m.SincePrev.Microseconds())/1000)
+			}
+			requestLogger.Flush()
+			c.Next()
+			return
+		}
 
 		// 获取请求参数，分类存储
 		params := make(map[string]any)
@@ -466,7 +474,6 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"option":     c.GetString("option"),
 			"content_kv": contentKV,
 		})
-		c.Next()
 		for _, m := range tracker.Marks() {
 			WriteGinInfoLog(c, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
 				m.Name,
@@ -494,8 +501,14 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				}
 			}
 		} else {
-			bodyMap["resp-status"] = c.GetInt("resp-status")
-			bodyMap["resp-message"] = c.GetString("resp-msg")
+			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
+			for _, ele := range c.GetStringSlice("gjsonkeys") {
+				if err != nil {
+					recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
+				} else {
+					bodyMap[ele] = gjson.GetBytes(readAll, ele).Value()
+				}
+			}
 		}
 
 		requestLogger.AddEntry(zerolog.InfoLevel, "response", map[string]any{
@@ -584,10 +597,19 @@ func GinLogOnlyReqMsg() gin.HandlerFunc {
 	}
 }
 
-// GinLogBriefInformation 用来只记录响应摘要信息。
-func GinLogBriefInformation() gin.HandlerFunc {
+// GinLogBriefInformation 记录gjsonKeys指定的key的值，key的起始是整个响应的根节点，不是单个请求的返回
+// 响应结构如下：如果需要获取data节点下的指定值，使用：data.xxx，具体用法参考：https://github.com/tidwall/gjson
+//
+//	{
+//	  "code": 200,
+//	  "message": "请求成功",
+//	  "data": {
+//	  }
+//	}
+func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("brief", true)
+		c.Set("gjsonkeys", gjsonKeys)
 		c.Next()
 	}
 }
