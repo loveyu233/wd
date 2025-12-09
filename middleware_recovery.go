@@ -8,13 +8,13 @@ import (
 )
 
 // MiddlewareRecovery 用来捕获请求中的 panic 并返回统一错误响应。
-func MiddlewareRecovery(log ...GBLog) gin.HandlerFunc {
-	var loclLog GBLog
+func MiddlewareRecovery(log ...CustomLog) gin.HandlerFunc {
+	var loclLog CustomLog
 
 	if len(log) > 0 {
 		loclLog = log[0]
 	} else {
-		loclLog = new(GbDefaultlogger)
+		loclLog = new(CustomDefaultLogger)
 	}
 	return func(c *gin.Context) {
 		defer func() {

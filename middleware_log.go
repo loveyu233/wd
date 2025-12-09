@@ -207,67 +207,13 @@ const (
 	RequestLoggerKey contextKey = "request_logger"
 )
 
-const maxLoggedBodyBytes = 1 << 20
-
 // ResponseWriter 是对 gin.ResponseWriter 的包装，用于捕获写入的响应
 type ResponseWriter struct {
 	gin.ResponseWriter
-	body *limitedBuffer
+	body *bytes.Buffer
 }
 
-type limitedBuffer struct {
-	limit     int
-	truncated bool
-	buf       bytes.Buffer
-}
-
-// newLimitedBuffer 用来创建限制最大容量的缓冲区。
-func newLimitedBuffer(limit int) *limitedBuffer {
-	return &limitedBuffer{limit: limit}
-}
-
-// Write 用来写入数据并在超过限制时标记截断。
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return b.buf.Write(p)
-	}
-	remaining := b.limit - b.buf.Len()
-	if remaining > 0 {
-		toWrite := remaining
-		if len(p) < toWrite {
-			toWrite = len(p)
-		}
-		b.buf.Write(p[:toWrite])
-		if len(p) > toWrite {
-			b.truncated = true
-		}
-	} else if len(p) > 0 {
-		b.truncated = true
-	}
-	return len(p), nil
-}
-
-// WriteString 用来将字符串内容写入缓冲区。
-func (b *limitedBuffer) WriteString(s string) (int, error) {
-	return b.Write([]byte(s))
-}
-
-// Bytes 用来返回当前缓冲区内容。
-func (b *limitedBuffer) Bytes() []byte {
-	return b.buf.Bytes()
-}
-
-// Len 用来获取当前缓冲区长度。
-func (b *limitedBuffer) Len() int {
-	return b.buf.Len()
-}
-
-// Truncated 用来指示缓冲区内容是否被截断。
-func (b *limitedBuffer) Truncated() bool {
-	return b.truncated
-}
-
-// Write 用来捕获响应数据同时写回客户端。
+// Write 重写 Write 方法以捕获响应内容
 func (w ResponseWriter) Write(b []byte) (int, error) {
 	// 写入到缓冲区
 	w.body.Write(b)
@@ -275,7 +221,7 @@ func (w ResponseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// WriteString 用来捕获响应字符串并写回客户端。
+// WriteString 重写 WriteString 方法以捕获响应内容
 func (w ResponseWriter) WriteString(s string) (int, error) {
 	// 写入到缓冲区
 	w.body.WriteString(s)
@@ -332,17 +278,21 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 开始时间
 		startTime := Now()
-		// 创建请求日志器
-		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
-		c.Set(string(RequestLoggerKey), requestLogger)
-
 		// 创建自定义 ResponseWriter
-		bodyBuffer := newLimitedBuffer(maxLoggedBodyBytes)
+		bodyBuffer := &bytes.Buffer{}
 		responseWriter := &ResponseWriter{
 			ResponseWriter: c.Writer,
 			body:           bodyBuffer,
 		}
 		c.Writer = responseWriter
+		c.Next()
+		if c.GetBool("skip") {
+			c.Next()
+			return
+		}
+		// 创建请求日志器
+		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
+		c.Set(string(RequestLoggerKey), requestLogger)
 
 		// 获取请求参数，分类存储
 		params := make(map[string]any)
@@ -491,12 +441,6 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		}
 		fullURL := scheme + "://" + c.Request.Host + c.Request.RequestURI
 
-		c.Next()
-		if c.GetBool("skip") {
-			c.Next()
-			return
-		}
-
 		var contentKV = make(map[string]any)
 		for _, key := range mc.ContentKeys {
 			value, exists := c.Get(key)
@@ -519,6 +463,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"content_kv": contentKV,
 		})
 
+		c.Next()
 		if c.GetBool("only-req") {
 			// 输出所有收集的日志
 			requestLogger.Flush()
@@ -530,17 +475,18 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 
 		bodyMap := make(map[string]any)
 		if !c.GetBool("brief") {
-			if data := bodyBuffer.Bytes(); len(data) > 0 {
-				if err := json.Unmarshal(data, &bodyMap); err != nil {
-					bodyMap["raw"] = string(data)
+			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
+			if err != nil {
+				recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
+			} else {
+				if err := json.Unmarshal(readAll, &bodyMap); err != nil {
+					recordBodySkip(params, fmt.Sprintf("解析请求体失败: %v", err))
 				}
 			}
-			if bodyBuffer.Truncated() {
-				bodyMap["resp_truncated"] = fmt.Sprintf("response body exceeded %d bytes and was truncated", maxLoggedBodyBytes)
-			}
+		} else {
+			bodyMap["resp-status"] = c.GetInt("resp-status")
+			bodyMap["resp-message"] = c.GetString("resp-msg")
 		}
-		bodyMap["resp-status"] = c.GetInt("resp-status")
-		bodyMap["resp-message"] = c.GetString("resp-msg")
 
 		requestLogger.AddEntry(zerolog.InfoLevel, "response", map[string]any{
 			"status_code": c.Writer.Status(),
@@ -660,9 +606,6 @@ func shouldCaptureRequestBody(r *http.Request) (bool, string) {
 	}
 	if r.ContentLength == -1 {
 		return false, "request body size is unknown (chunked transfer)"
-	}
-	if r.ContentLength > maxLoggedBodyBytes {
-		return false, fmt.Sprintf("request body exceeds %d bytes", maxLoggedBodyBytes)
 	}
 	return true, ""
 }
