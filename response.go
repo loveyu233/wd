@@ -78,65 +78,65 @@ var (
 	// ... 可以继续添加其他预定义错误
 )
 
-func ErrRequestExternalServiceMsg(err error, args ...any) *AppError {
+func MsgErrRequestExternalService(err error, args ...any) *AppError {
 	return ErrRequestExternalService.WithMessage(err.Error(), args...)
 }
-func ErrRequestWechatMsg(err error, args ...any) *AppError {
+func MsgErrRequestWechat(err error, args ...any) *AppError {
 	return ErrRequestWechat.WithMessage(err.Error(), args...)
 }
-func ErrRequestWechatPayMsg(err error, args ...any) *AppError {
+func MsgErrRequestWechatPay(err error, args ...any) *AppError {
 	return ErrRequestWechatPay.WithMessage(err.Error(), args...)
 }
-func ErrRequestAliMsg(err error, args ...any) *AppError {
+func MsgErrRequestAli(err error, args ...any) *AppError {
 	return ErrRequestAli.WithMessage(err.Error(), args...)
 }
-func ErrRequestAliPayMsg(err error, args ...any) *AppError {
+func MsgErrRequestAliPay(err error, args ...any) *AppError {
 	return ErrRequestAliPay.WithMessage(err.Error(), args...)
 }
 
-func ErrBadRequestMsg(err error, args ...any) *AppError {
+func MsgErrBadRequest(err error, args ...any) *AppError {
 	return ErrBadRequest.WithMessage(err.Error(), args...)
 }
-func ErrInvalidParamMsg(err error, args ...any) *AppError {
+func MsgErrInvalidParam(err error, args ...any) *AppError {
 	return ErrInvalidParam.WithMessage(err.Error(), args...)
 }
-func ErrTokenInvalidMsg(err error, args ...any) *AppError {
+func MsgErrTokenInvalid(err error, args ...any) *AppError {
 	return ErrTokenInvalid.WithMessage(err.Error(), args...)
 }
 
-func ErrUnauthorizedMsg(err error, args ...any) *AppError {
+func MsgErrUnauthorized(err error, args ...any) *AppError {
 	return ErrUnauthorized.WithMessage(err.Error(), args...)
 }
 
-func ErrForbiddenAuthMsg(err error, args ...any) *AppError {
+func MsgErrForbiddenAuth(err error, args ...any) *AppError {
 	return ErrForbiddenAuth.WithMessage(err.Error(), args...)
 }
-func ErrUserDisabledMsg(err error, args ...any) *AppError {
+func MsgErrUserDisabled(err error, args ...any) *AppError {
 	return ErrUserDisabled.WithMessage(err.Error(), args...)
 }
 
-func ErrNotFoundMsg(err error, args ...any) *AppError {
+func MsgErrNotFound(err error, args ...any) *AppError {
 	return ErrNotFound.WithMessage(err.Error(), args...)
 }
 
-func ErrDataExistsMsg(err error, args ...any) *AppError {
+func MsgErrDataExists(err error, args ...any) *AppError {
 	return ErrDataExists.WithMessage(err.Error(), args...)
 }
-func ErrUniqueIndexConflictMsg(err error, args ...any) *AppError {
+func MsgErrUniqueIndexConflict(err error, args ...any) *AppError {
 	return ErrUniqueIndexConflict.WithMessage(err.Error(), args...)
 }
 
-func ErrServerBusyMsg(err error, args ...any) *AppError {
+func MsgErrServerBusy(err error, args ...any) *AppError {
 	return ErrServerBusy.WithMessage(err.Error(), args...)
 }
-func ErrDatabaseMsg(err error, args ...any) *AppError {
+func MsgErrDatabase(err error, args ...any) *AppError {
 	return ErrDatabase.WithMessage(err.Error(), args...)
 }
-func ErrRedisMsg(err error, args ...any) *AppError {
+func MsgErrRedis(err error, args ...any) *AppError {
 	return ErrRedis.WithMessage(err.Error(), args...)
 }
 
-func EncryptErrMsg(err error, args ...any) *AppError {
+func MsgEncryptErr(err error, args ...any) *AppError {
 	return EncryptErr.WithMessage(err.Error(), args...)
 }
 
