@@ -93,9 +93,9 @@ func (rl *RequestLogger) Flush() {
 	}
 
 	// 输出合并的日志
-	event.Interface("request_logs", logEntries).
-		Int("log_count", len(rl.entries)).
-		Msg("Request completed with collected logs")
+	event.Interface("链路日志", logEntries).
+		Int("总计日志条数", len(rl.entries)).
+		Msg("日志收集完成")
 }
 
 // ContextLogger 提供链路日志记录功能
@@ -285,6 +285,10 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			body:           bodyBuffer,
 		}
 		c.Writer = responseWriter
+
+		tracker := NewTracker()
+		c.Set(trackerKey, tracker)
+
 		c.Next()
 		if c.GetBool("skip") {
 			c.Next()
@@ -462,8 +466,14 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"option":     c.GetString("option"),
 			"content_kv": contentKV,
 		})
-
 		c.Next()
+		for _, m := range tracker.Marks() {
+			WriteGinInfoLog(c, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
+				m.Name,
+				float64(m.SinceStart.Microseconds())/1000,
+				float64(m.SincePrev.Microseconds())/1000)
+		}
+
 		if c.GetBool("only-req") {
 			// 输出所有收集的日志
 			requestLogger.Flush()
@@ -516,20 +526,6 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				RespMessage: c.GetString("resp-msg"),
 			})
 		}
-	}
-}
-
-// GetContextLogger 用来从 gin.Context 获取请求级日志器。
-func GetContextLogger(c *gin.Context) *ContextLogger {
-	if requestLogger, exists := c.Get(string(RequestLoggerKey)); exists {
-		if rl, ok := requestLogger.(*RequestLogger); ok {
-			return &ContextLogger{requestLogger: rl}
-		}
-	}
-
-	// 如果获取失败，返回一个空的日志器避免 panic
-	return &ContextLogger{
-		requestLogger: NewRequestLogger(context.Background(), log.Logger),
 	}
 }
 
@@ -638,4 +634,72 @@ func resolveMaskedHeaders(custom []string) map[string]struct{} {
 		m[strings.ToLower(header)] = struct{}{}
 	}
 	return m
+}
+
+type Mark struct {
+	Name       string
+	SinceStart time.Duration
+	SincePrev  time.Duration
+}
+
+type Tracker struct {
+	mu    sync.Mutex
+	start time.Time
+	last  time.Time
+	marks []Mark
+}
+
+func NewTracker() *Tracker {
+	now := time.Now()
+	return &Tracker{start: now, last: now}
+}
+
+func (t *Tracker) Mark(name string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	t.marks = append(t.marks, Mark{
+		Name:       name,
+		SinceStart: now.Sub(t.start),
+		SincePrev:  now.Sub(t.last),
+	})
+	t.last = now
+}
+
+func (t *Tracker) Marks() []Mark {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	out := make([]Mark, len(t.marks))
+	copy(out, t.marks)
+	return out
+}
+
+const trackerKey = "record_time_flag"
+
+// GetContextLogger 用来从 gin.Context 获取请求级日志器。
+func GetContextLogger(c *gin.Context) *ContextLogger {
+	if requestLogger, exists := c.Get(string(RequestLoggerKey)); exists {
+		if rl, ok := requestLogger.(*RequestLogger); ok {
+			return &ContextLogger{requestLogger: rl}
+		}
+	}
+
+	// 如果获取失败，返回一个空的日志器避免 panic
+	return &ContextLogger{
+		requestLogger: NewRequestLogger(context.Background(), log.Logger),
+	}
+}
+
+// SetRecordTimeFlag 设置一个用于记录耗时的标志，会在后续的日志中输出耗时信息。
+func SetRecordTimeFlag(c *gin.Context, flagName string) {
+	v, ok := c.Get(trackerKey)
+	if !ok {
+		return
+	}
+	tracker, ok := v.(*Tracker)
+	if ok {
+		tracker.Mark(flagName)
+	}
 }
