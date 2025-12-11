@@ -19,6 +19,7 @@ const (
 	CSTLayoutDateChinese            = "2006年01月02日"
 	CSTLayoutDatePoint              = "2006.01.02"
 	CSTLayoutTime                   = "15:04:05"
+	CSTLayoutTimeHourMinutes        = "15:04"
 	CSTLayoutDateHourMinutes        = "2006-01-02 15:04"
 	CSTLayoutDateHourMinutesChinese = "2006年01月02日 15:04"
 	CSTLayoutDateHourMinutesPoint   = "2006.01.02 15:04"

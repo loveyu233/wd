@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cast"
 )
 
+type CustomTime interface {
+	Time() time.Time
+}
+
 // DateTime 完整的日期时间类型 (YYYY-MM-DD HH:MM:SS)
 type DateTime time.Time
 
@@ -23,6 +27,22 @@ type TimeOnly time.Time
 type TimeHourMinute time.Time
 
 // ========== DateTime 转换方法 ==========
+
+// NewDateTimeString 用来从字符串解析 DateTime。
+func NewDateTimeString(dateString string) (*DateTime, error) {
+	date, err := time.ParseInLocation(CSTLayout, dateString, ShangHaiTimeLocation)
+	if err != nil {
+		return nil, err
+	}
+	// 确保时间部分为零
+	fixedDate := time.Date(
+		date.Year(), date.Month(), date.Day(),
+		date.Hour(), date.Minute(), date.Second(), date.Nanosecond(),
+		ShangHaiTimeLocation,
+	)
+	result := DateTime(fixedDate)
+	return &result, nil
+}
 
 // ToDateOnly 用来把完整的 DateTime 取整到日期。
 func (dt DateTime) ToDateOnly() DateOnly {
@@ -167,7 +187,7 @@ func NewDateOnly(year int, month time.Month, day int) DateOnly {
 
 // NewDateOnlyString 用来从字符串解析 DateOnly。
 func NewDateOnlyString(dateString string) (*DateOnly, error) {
-	date, err := time.ParseInLocation("2006-01-02", dateString, ShangHaiTimeLocation)
+	date, err := time.ParseInLocation(CSTLayoutDate, dateString, ShangHaiTimeLocation)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +230,7 @@ func (d *DateOnly) Scan(v interface{}) error {
 
 // parseAndSet 用来把日期字符串写入 DateOnly。
 func (d *DateOnly) parseAndSet(dateStr string) error {
-	parsedDate, err := time.ParseInLocation("2006-01-02", dateStr, ShangHaiTimeLocation)
+	parsedDate, err := time.ParseInLocation(CSTLayoutDate, dateStr, ShangHaiTimeLocation)
 	if err != nil {
 		return err
 	}
@@ -232,12 +252,12 @@ func (d DateOnly) Value() (driver.Value, error) {
 	if tm.IsZero() {
 		return nil, nil
 	}
-	return tm.In(ShangHaiTimeLocation).Format("2006-01-02"), nil
+	return tm.In(ShangHaiTimeLocation).Format(CSTLayoutDate), nil
 }
 
 // String 用来输出 YYYY-MM-DD 字符串。
 func (d DateOnly) String() string {
-	return time.Time(d).In(ShangHaiTimeLocation).Format("2006-01-02")
+	return time.Time(d).In(ShangHaiTimeLocation).Format(CSTLayoutDate)
 }
 
 // Format 用来自定义 DateOnly 的输出格式。
@@ -252,7 +272,7 @@ func (d DateOnly) Time() time.Time {
 
 // MarshalJSON 用来把 DateOnly 序列化为 JSON。
 func (d DateOnly) MarshalJSON() ([]byte, error) {
-	formatted := time.Time(d).In(ShangHaiTimeLocation).Format("2006-01-02")
+	formatted := time.Time(d).In(ShangHaiTimeLocation).Format(CSTLayoutDate)
 	return json.Marshal(formatted)
 }
 
@@ -262,7 +282,7 @@ func (d *DateOnly) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &dateStr); err != nil {
 		return err
 	}
-	parsed, err := time.ParseInLocation("2006-01-02", dateStr, ShangHaiTimeLocation)
+	parsed, err := time.ParseInLocation(CSTLayoutDate, dateStr, ShangHaiTimeLocation)
 	if err != nil {
 		return err
 	}
@@ -346,8 +366,8 @@ func (t *TimeOnly) Scan(v interface{}) error {
 // parseTimeString 用来解析时间字符串并返回 time.Time。
 func (t *TimeOnly) parseTimeString(timeStr string) (time.Time, error) {
 	layouts := []string{
-		"15:04:05", // HH:MM:SS
-		"15:04",    // HH:MM
+		CSTLayoutTime,            // HH:MM:SS
+		CSTLayoutTimeHourMinutes, // HH:MM
 	}
 
 	for _, layout := range layouts {
@@ -371,12 +391,12 @@ func (t TimeOnly) Value() (driver.Value, error) {
 	if tm.IsZero() {
 		return nil, nil
 	}
-	return tm.In(ShangHaiTimeLocation).Format("15:04:05"), nil
+	return tm.In(ShangHaiTimeLocation).Format(CSTLayoutTime), nil
 }
 
 // String 用来输出 HH:MM:SS 形式的字符串。
 func (t TimeOnly) String() string {
-	return time.Time(t).In(ShangHaiTimeLocation).Format("15:04:05")
+	return time.Time(t).In(ShangHaiTimeLocation).Format(CSTLayoutTime)
 }
 
 // Format 用来自定义 TimeOnly 的字符串表示。
@@ -391,7 +411,7 @@ func (t TimeOnly) Time() time.Time {
 
 // MarshalJSON 用来把 TimeOnly 序列化为 JSON 文本。
 func (t TimeOnly) MarshalJSON() ([]byte, error) {
-	formatted := time.Time(t).In(ShangHaiTimeLocation).Format("15:04:05")
+	formatted := time.Time(t).In(ShangHaiTimeLocation).Format(CSTLayoutTime)
 	return json.Marshal(formatted)
 }
 
@@ -514,8 +534,8 @@ func (t *TimeHourMinute) Scan(v interface{}) error {
 // parseTimeString 用来解析小时分钟字符串。
 func (t *TimeHourMinute) parseTimeString(timeStr string) (time.Time, error) {
 	layouts := []string{
-		"15:04",    // HH:MM (首选)
-		"15:04:05", // HH:MM:SS (忽略秒部分)
+		CSTLayoutTimeHourMinutes, // HH:MM (首选)
+		CSTLayoutTime,            // HH:MM:SS (忽略秒部分)
 	}
 
 	for _, layout := range layouts {
@@ -540,12 +560,12 @@ func (t TimeHourMinute) Value() (driver.Value, error) {
 	if tm.IsZero() {
 		return nil, nil
 	}
-	return tm.In(ShangHaiTimeLocation).Format("15:04"), nil
+	return tm.In(ShangHaiTimeLocation).Format(CSTLayoutTimeHourMinutes), nil
 }
 
 // String 用来输出 HH:MM 字符串。
 func (t TimeHourMinute) String() string {
-	return time.Time(t).In(ShangHaiTimeLocation).Format("15:04")
+	return time.Time(t).In(ShangHaiTimeLocation).Format(CSTLayoutTimeHourMinutes)
 }
 
 // Format 用来自定义小时分钟的输出格式。
@@ -560,7 +580,7 @@ func (t TimeHourMinute) Time() time.Time {
 
 // MarshalJSON 用来把 TimeHourMinute 序列化为 JSON 文本。
 func (t TimeHourMinute) MarshalJSON() ([]byte, error) {
-	formatted := time.Time(t).In(ShangHaiTimeLocation).Format("15:04")
+	formatted := time.Time(t).In(ShangHaiTimeLocation).Format(CSTLayoutTimeHourMinutes)
 	return json.Marshal(formatted)
 }
 

@@ -1,6 +1,8 @@
 package wd
 
 import (
+	"time"
+
 	"gorm.io/datatypes"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
@@ -22,12 +24,14 @@ func GenNewTime(table schema.Tabler, column field.IColumnName) field.Time {
 	return field.NewTime(table.TableName(), column.ColumnName().String())
 }
 
-// GenNewTimeIsDateOnly 判断column这个列的值是否是dateTime[0]这个日期
-func GenNewTimeIsDateOnly(table schema.Tabler, column field.IColumnName, dateTime ...DateOnly) field.Expr {
-	if len(dateTime) == 0 {
-		dateTime = append(dateTime, NowAsDateOnly())
-	}
-	return field.NewTime(table.TableName(), column.ColumnName().String()).Date().Eq(dateTime[0].Time())
+// GenNewTimeBetween 对column这个时间字段进行快捷的Between查询
+func GenNewTimeBetween(table schema.Tabler, column field.IColumnName, left, right time.Time) field.Expr {
+	return GenNewTime(table, column).Between(left, right)
+}
+
+// GenNewTimeIsCustomDateTime 判断column这个列的值是否是dateTime这个日期
+func GenNewTimeIsCustomDateTime(table schema.Tabler, column field.IColumnName, dateTime CustomTime) field.Expr {
+	return GenNewTime(table, column).Eq(dateTime.Time())
 }
 
 // GenNewUnsafeFieldRaw 用来创建原始 SQL 字段引用。

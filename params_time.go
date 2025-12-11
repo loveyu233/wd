@@ -1,7 +1,6 @@
 package wd
 
 import (
-	"gorm.io/gen"
 	"gorm.io/gen/field"
 	"gorm.io/gorm/schema"
 )
@@ -66,7 +65,7 @@ func (req *ReqDateTimeStartEnd) Enabled() bool {
 	return req.StartDateTime != "" && req.EndDateTime != ""
 }
 
-func (req *ReqDateTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqDateTimeStartEnd) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -75,10 +74,7 @@ func (req *ReqDateTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condit
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Gte(req.startDateTime),
-		filed.Lte(req.endDateTime),
-	}, nil
+	return GenNewTimeBetween(table, column, req.startDateTime.Time(), req.endDateTime.Time()), nil
 }
 
 type ReqDateTime struct {
@@ -120,7 +116,7 @@ func (req *ReqDateTime) Enabled() bool {
 	return req.DateTime != ""
 }
 
-func (req *ReqDateTime) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqDateTime) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -129,9 +125,7 @@ func (req *ReqDateTime) GenWhereFilters(filed field.Field) ([]gen.Condition, err
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Eq(req.dateTime),
-	}, nil
+	return GenNewTime(table, column).Eq(req.dateTime.Time()), nil
 }
 
 type ReqDateStartEnd struct {
@@ -193,7 +187,7 @@ func (req *ReqDateStartEnd) Enabled() bool {
 	return req.StartDate != "" && req.EndDate != ""
 }
 
-func (req *ReqDateStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqDateStartEnd) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -202,10 +196,7 @@ func (req *ReqDateStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition,
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Gte(req.startDate),
-		filed.Lte(req.endDate),
-	}, nil
+	return GenNewTimeBetween(table, column, req.startDate.Time(), req.endDate.Time()), nil
 }
 
 type ReqDate struct {
@@ -243,7 +234,7 @@ func (req *ReqDate) Enabled() bool {
 	return req.Date != ""
 }
 
-func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (gen.Condition, error) {
+func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -252,7 +243,7 @@ func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (gen
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return GenNewTimeIsDateOnly(table, filed, req.date), nil
+	return GenNewTimeIsCustomDateTime(table, filed, req.date), nil
 }
 
 type ReqTimeStartEnd struct {
@@ -311,7 +302,7 @@ func (req *ReqTimeStartEnd) Enabled() bool {
 	return req.StartTime != "" && req.EndTime != ""
 }
 
-func (req *ReqTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqTimeStartEnd) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -320,10 +311,7 @@ func (req *ReqTimeStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition,
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Gte(req.startTime),
-		filed.Lte(req.endTime),
-	}, nil
+	return GenNewTimeBetween(table, column, req.startTime.Time(), req.endTime.Time()), nil
 }
 
 type ReqTime struct {
@@ -362,7 +350,7 @@ func (req *ReqTime) Enabled() bool {
 	return req.Time != ""
 }
 
-func (req *ReqTime) GenWhereFilters(filed field.Field) (gen.Condition, error) {
+func (req *ReqTime) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -371,7 +359,7 @@ func (req *ReqTime) GenWhereFilters(filed field.Field) (gen.Condition, error) {
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return filed.Eq(req.time), nil
+	return GenNewTimeIsCustomDateTime(table, column, req.time), nil
 }
 
 type ReqTimeHourMinuteStartEnd struct {
@@ -433,7 +421,7 @@ func (req *ReqTimeHourMinuteStartEnd) Enabled() bool {
 	return req.StartTimeHourMinute != "" && req.EndTimeHourMinute != ""
 }
 
-func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -442,10 +430,7 @@ func (req *ReqTimeHourMinuteStartEnd) GenWhereFilters(filed field.Field) ([]gen.
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Gte(req.startTimeHourMinute),
-		filed.Lte(req.endTimeHourMinute),
-	}, nil
+	return GenNewTimeBetween(table, column, req.startTimeHourMinute.Time(), req.endTimeHourMinute.Time()), nil
 }
 
 type ReqTimeHourMinute struct {
@@ -486,7 +471,7 @@ func (req *ReqTimeHourMinute) Enabled() bool {
 	return req.TimeHourMinute != ""
 }
 
-func (req *ReqTimeHourMinute) GenWhereFilters(filed field.Field) ([]gen.Condition, error) {
+func (req *ReqTimeHourMinute) GenWhereFilters(table schema.Tabler, column field.IColumnName) (field.Expr, error) {
 	if !req.isParse {
 		if err := req.parse(); err != nil {
 			return nil, err
@@ -495,9 +480,7 @@ func (req *ReqTimeHourMinute) GenWhereFilters(filed field.Field) ([]gen.Conditio
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return []gen.Condition{
-		filed.Eq(req.timeHourMinute),
-	}, nil
+	return GenNewTimeIsCustomDateTime(table, column, req.timeHourMinute), nil
 }
 
 func parseOptional[T any](raw string, parse func(string) (T, error)) (value T, err error) {
