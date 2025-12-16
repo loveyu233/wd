@@ -1,7 +1,6 @@
 package wd
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -128,7 +127,7 @@ func (r *ReqFile) parse() error {
 	var err error
 	r.file, err = r.File.Open()
 	if err != nil {
-		return MsgErrDataExists(err)
+		return MsgErrDataExists(err.Error())
 	}
 	r.isParse = true
 	return nil
@@ -146,7 +145,7 @@ func (r *ReqFile) FileContent() ([]byte, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return nil, MsgErrDataExists(err)
+		return nil, MsgErrDataExists(err.Error())
 	}
 	return r.fileBytes, nil
 }
@@ -164,7 +163,7 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return "", MsgErrDataExists(err)
+		return "", MsgErrDataExists(err.Error())
 	}
 	r.isRead = true
 	return GetFileContentType(r.fileBytes), nil
@@ -172,14 +171,14 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 
 func (r *ReqFile) GetFileNameType() (string, error) {
 	if !r.Enable() {
-		return "", MsgErrNotFound(errors.New("文件不存在"))
+		return "", MsgErrNotFound("文件不存在")
 	}
 	return GetFileNameType(r.File.Filename), nil
 }
 
 func (r *ReqFile) GetFileSize() (int64, error) {
 	if !r.Enable() {
-		return 0, MsgErrNotFound(errors.New("文件不存在"))
+		return 0, MsgErrNotFound("文件不存在")
 	}
 	return r.File.Size, nil
 }
@@ -192,5 +191,5 @@ func (r *ReqFile) UploadFile(uploadFileFunc func(file *multipart.FileHeader) (st
 	if len(urls) > 0 {
 		return urls[0], nil
 	}
-	return "", MsgErrRequestExternalService(errors.New("上传文件失败"))
+	return "", MsgErrRequestExternalService("上传文件失败")
 }

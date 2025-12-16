@@ -13,6 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+var InsGinJWTMiddleware *GinJWTMiddleware
+
 // MapClaims 使用 map[string]interface{} 进行 JSON 解码的类型
 // 如果你没有提供一个，这是默认的声明类型
 type MapClaims map[string]interface{}
@@ -77,7 +79,7 @@ type GinJWTMiddleware struct {
 	// 用户可以定义自己的刷新响应函数。
 	RefreshResponse func(c *gin.Context, code int, message string, time time.Time)
 
-	// 设置身份处理函数
+	// 设置身份处理函数，默认使用 IdentityKey
 	IdentityHandler func(c *gin.Context) interface{}
 
 	// 设置身份键
@@ -162,78 +164,13 @@ type GinJWTMiddleware struct {
 	ParseOptions []jwt.ParserOption
 }
 
-var (
-	// ErrMissingSecretKey 表示需要密钥
-	ErrMissingSecretKey = errors.New("密钥是必需的")
-
-	// ErrForbidden 当 HTTP 状态 403 被给出时
-	ErrForbidden = errors.New("你没有权限访问此资源")
-
-	// ErrMissingAuthenticatorFunc 表示需要 Authenticator
-	ErrMissingAuthenticatorFunc = errors.New("GinJWTMiddleware.Authenticator 函数未定义")
-
-	// ErrMissingLoginValues 表示用户尝试在没有用户名或密码的情况下进行身份验证
-	ErrMissingLoginValues = errors.New("缺少用户名或密码")
-
-	// ErrFailedAuthentication 表示身份验证失败，可能是错误的用户名或密码
-	ErrFailedAuthentication = errors.New("用户名或密码不正确")
-
-	// ErrFailedTokenCreation 表示 JWT 令牌创建失败，原因未知
-	ErrFailedTokenCreation = errors.New("创建 JWT 令牌失败")
-
-	// ErrExpiredToken 表示 JWT 令牌已过期。无法刷新。
-	ErrExpiredToken = errors.New("令牌已过期") // 实际上，这是由 jwt 库生成的，不是我们生成的
-
-	// ErrEmptyAuthHeader 如果使用 HTTP 头进行身份验证，需要设置 Auth 头时可以抛出
-	ErrEmptyAuthHeader = errors.New("认证头为空")
-
-	// ErrMissingExpField 令牌中缺少 exp 字段
-	ErrMissingExpField = errors.New("缺少 exp 字段")
-
-	// ErrWrongFormatOfExp 字段必须是 float64 格式
-	ErrWrongFormatOfExp = errors.New("exp 必须是 float64 格式")
-
-	// ErrInvalidAuthHeader 表示认证头无效，例如可能具有错误的域名
-	ErrInvalidAuthHeader = errors.New("认证头无效")
-
-	// ErrEmptyQueryToken 如果使用 URL 查询进行身份验证，查询令牌变量为空时可以抛出
-	ErrEmptyQueryToken = errors.New("查询令牌为空")
-
-	// ErrEmptyCookieToken 如果使用 cookie 进行身份验证，令牌 cookie 为空时可以抛出
-	ErrEmptyCookieToken = errors.New("cookie 令牌为空")
-
-	// ErrEmptyParamToken 如果使用路径中的参数进行身份验证，路径中的参数为空时可以抛出
-	ErrEmptyParamToken = errors.New("参数令牌为空")
-
-	// ErrEmptyFormToken 如果使用 post 表单进行身份验证，表单令牌为空时可以抛出
-	ErrEmptyFormToken = errors.New("表单令牌为空")
-
-	// ErrInvalidSigningAlgorithm 表示签名算法无效，需要是 HS256, HS384, HS512, RS256, RS384 或 RS512
-	ErrInvalidSigningAlgorithm = errors.New("无效的签名算法")
-
-	// ErrNoPrivKeyFile 表示给定的私钥不可读
-	ErrNoPrivKeyFile = errors.New("私钥文件不可读")
-
-	// ErrNoPubKeyFile 表示给定的公钥不可读
-	ErrNoPubKeyFile = errors.New("公钥文件不可读")
-
-	// ErrInvalidPrivKey 表示给定的私钥无效
-	ErrInvalidPrivKey = errors.New("私钥无效")
-
-	// ErrInvalidPubKey 表示给定的公钥无效
-	ErrInvalidPubKey = errors.New("公钥无效")
-
-	// IdentityKey 默认身份键
-	IdentityKey = "identity"
-)
-
 // InitGinJWTMiddleware 用来初始化 GinJWTMiddleware 并执行必要检查。
-func InitGinJWTMiddleware(m *GinJWTMiddleware) (*GinJWTMiddleware, error) {
+func InitGinJWTMiddleware(m *GinJWTMiddleware) error {
 	if err := m.MiddlewareInit(); err != nil {
-		return nil, err
+		return err
 	}
-
-	return m, nil
+	InsGinJWTMiddleware = m
+	return nil
 }
 
 // readKeys 用来加载配置中的私钥和公钥文件。
@@ -257,14 +194,14 @@ func (mw *GinJWTMiddleware) privateKey() error {
 	} else {
 		filecontent, err := os.ReadFile(mw.PrivKeyFile)
 		if err != nil {
-			return ErrNoPrivKeyFile
+			return MsgErrTokenServerInvalid("私钥文件读取失败")
 		}
 		keyData = filecontent
 	}
 
 	key, err := jwt.ParseRSAPrivateKeyFromPEM(keyData)
 	if err != nil {
-		return ErrInvalidPrivKey
+		return MsgErrTokenServerInvalid("私钥无效")
 	}
 	mw.privKey = key
 	return nil
@@ -278,14 +215,14 @@ func (mw *GinJWTMiddleware) publicKey() error {
 	} else {
 		filecontent, err := os.ReadFile(mw.PubKeyFile)
 		if err != nil {
-			return ErrNoPubKeyFile
+			return MsgErrTokenServerInvalid("公钥文件读取失败")
 		}
 		keyData = filecontent
 	}
 
 	key, err := jwt.ParseRSAPublicKeyFromPEM(keyData)
 	if err != nil {
-		return ErrInvalidPubKey
+		return MsgErrTokenServerInvalid("公钥无效")
 	}
 	mw.pubKey = key
 	return nil
@@ -337,43 +274,42 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 
 	if mw.Unauthorized == nil {
 		mw.Unauthorized = func(c *gin.Context, code int, message string) {
-			c.JSON(code, gin.H{
-				"code":    code,
-				"message": message,
-			})
+			ResponseError(c, MsgErrUnauthorized(message))
 		}
 	}
 
 	if mw.LoginResponse == nil {
 		mw.LoginResponse = func(c *gin.Context, code int, token string, expire time.Time) {
-			c.JSON(http.StatusOK, gin.H{
-				"code":   http.StatusOK,
-				"token":  token,
-				"expire": expire.Format(time.RFC3339),
-			})
+			if code == http.StatusOK {
+				ResponseSuccess(c, token)
+			} else {
+				ResponseError(c, MsgErrInvalidParam("登录失败"))
+			}
 		}
 	}
 
 	if mw.LogoutResponse == nil {
 		mw.LogoutResponse = func(c *gin.Context, code int) {
-			c.JSON(http.StatusOK, gin.H{
-				"code": http.StatusOK,
-			})
+			if code == http.StatusOK {
+				ResponseSuccess(c, "操作成功")
+			} else {
+				ResponseError(c, MsgErrServerBusy("操作失败"))
+			}
 		}
 	}
 
 	if mw.RefreshResponse == nil {
 		mw.RefreshResponse = func(c *gin.Context, code int, token string, expire time.Time) {
-			c.JSON(http.StatusOK, gin.H{
-				"code":   http.StatusOK,
-				"token":  token,
-				"expire": expire.Format(time.RFC3339),
-			})
+			if code == http.StatusOK {
+				ResponseSuccess(c, token)
+			} else {
+				ResponseError(c, ErrTokenServerInvalid)
+			}
 		}
 	}
 
 	if mw.IdentityKey == "" {
-		mw.IdentityKey = IdentityKey
+		mw.IdentityKey = "identity"
 	}
 
 	if mw.IdentityHandler == nil {
@@ -385,12 +321,12 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 
 	if mw.HTTPStatusMessageFunc == nil {
 		mw.HTTPStatusMessageFunc = func(e error, c *gin.Context) string {
-			return e.Error()
+			return ConvertToAppError(e).Message
 		}
 	}
 
 	if mw.Realm == "" {
-		mw.Realm = "gin jwt"
+		mw.Realm = "token"
 	}
 
 	if mw.CookieMaxAge == 0 {
@@ -411,7 +347,7 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 	}
 
 	if mw.Key == nil {
-		return ErrMissingSecretKey
+		return MsgErrTokenServerInvalid("密钥不能为空")
 	}
 	return nil
 }
@@ -427,31 +363,45 @@ func (mw *GinJWTMiddleware) MiddlewareFunc() gin.HandlerFunc {
 func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 	claims, err := mw.GetClaimsFromJWT(c)
 	if err != nil {
-		mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(err, c))
+		var appErr *AppError
+		switch {
+		case errors.Is(err, jwt.ErrTokenExpired):
+			appErr = MsgErrTokenServerInvalid("令牌已过期")
+		case errors.Is(err, jwt.ErrTokenMalformed):
+			appErr = MsgErrTokenServerInvalid("令牌格式错误")
+		default:
+			appErr = MsgErrTokenServerInvalid("令牌异常")
+		}
+		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
 	}
 
 	switch v := claims["exp"].(type) {
 	case nil:
-		mw.unauthorized(c, http.StatusBadRequest, mw.HTTPStatusMessageFunc(ErrMissingExpField, c))
+		appErr := MsgErrTokenServerInvalid("令牌异常")
+		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
 	case float64:
 		if int64(v) < mw.TimeFunc().Unix() {
-			mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(ErrExpiredToken, c))
+			appErr := MsgErrTokenServerInvalid("令牌已过期")
+			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 	case json.Number:
 		n, err := v.Int64()
 		if err != nil {
-			mw.unauthorized(c, http.StatusBadRequest, mw.HTTPStatusMessageFunc(ErrWrongFormatOfExp, c))
+			appErr := MsgErrTokenServerInvalid("令牌格式错误")
+			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 		if n < mw.TimeFunc().Unix() {
-			mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(ErrExpiredToken, c))
+			appErr := MsgErrTokenServerInvalid("令牌已过期")
+			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 	default:
-		mw.unauthorized(c, http.StatusBadRequest, mw.HTTPStatusMessageFunc(ErrWrongFormatOfExp, c))
+		appErr := MsgErrTokenServerInvalid("令牌格式错误")
+		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
 	}
 
@@ -463,7 +413,7 @@ func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 	}
 
 	if !mw.Authorizator(identity, c) {
-		mw.unauthorized(c, http.StatusForbidden, mw.HTTPStatusMessageFunc(ErrForbidden, c))
+		mw.unauthorized(c, ErrForbiddenAuth.Code, mw.HTTPStatusMessageFunc(ErrForbiddenAuth, c))
 		return
 	}
 
@@ -495,7 +445,8 @@ func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) 
 func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if mw.Authenticator == nil {
-			mw.unauthorized(c, http.StatusInternalServerError, mw.HTTPStatusMessageFunc(ErrMissingAuthenticatorFunc, c))
+			appError := MsgErrTokenServerInvalid("缺少必要的函数定义")
+			mw.unauthorized(c, appError.Code, mw.HTTPStatusMessageFunc(appError, c))
 			return
 		}
 
@@ -526,7 +477,8 @@ func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 		claims["orig_iat"] = mw.TimeFunc().Unix()
 		tokenString, err := mw.signedString(token)
 		if err != nil {
-			mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(ErrFailedTokenCreation, c))
+			appError := MsgErrTokenServerInvalid("创建令牌失败")
+			mw.unauthorized(c, appError.Code, mw.HTTPStatusMessageFunc(appError, c))
 			return
 		}
 
@@ -572,7 +524,8 @@ func (mw *GinJWTMiddleware) RefreshHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, expire, err := mw.RefreshToken(c)
 		if err != nil {
-			mw.unauthorized(c, http.StatusUnauthorized, mw.HTTPStatusMessageFunc(err, c))
+			appErr := MsgErrTokenServerInvalid(err.Error())
+			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 
@@ -623,7 +576,7 @@ func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, e
 		return nil, err
 	}
 	if !token.Valid {
-		return nil, ErrExpiredToken
+		return nil, MsgErrTokenClientInvalid("令牌无效")
 	}
 
 	claims := token.Claims.(jwt.MapClaims)
@@ -631,7 +584,7 @@ func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, e
 	origIat := int64(claims["orig_iat"].(float64))
 
 	if origIat < mw.TimeFunc().Add(-mw.MaxRefresh).Unix() {
-		return nil, ErrExpiredToken
+		return nil, MsgErrTokenClientInvalid("令牌已过期")
 	}
 
 	return claims, nil
@@ -669,13 +622,13 @@ func (mw *GinJWTMiddleware) jwtFromHeader(c *gin.Context, key string) (string, e
 	authHeader := c.GetHeader(key)
 
 	if authHeader == "" {
-		return "", ErrEmptyAuthHeader
+		return "", MsgErrTokenClientInvalid("认证头为空")
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if !((len(parts) == 1 && mw.WithoutDefaultTokenHeadName && mw.TokenHeadName == "") ||
 		(len(parts) == 2 && parts[0] == mw.TokenHeadName)) {
-		return "", ErrInvalidAuthHeader
+		return "", MsgErrTokenClientInvalid("认证头无效")
 	}
 
 	return parts[len(parts)-1], nil
@@ -686,7 +639,7 @@ func (mw *GinJWTMiddleware) jwtFromQuery(c *gin.Context, key string) (string, er
 	token := c.Query(key)
 
 	if token == "" {
-		return "", ErrEmptyQueryToken
+		return "", MsgErrTokenClientInvalid("令牌为空")
 	}
 
 	return token, nil
@@ -696,11 +649,11 @@ func (mw *GinJWTMiddleware) jwtFromQuery(c *gin.Context, key string) (string, er
 func (mw *GinJWTMiddleware) jwtFromCookie(c *gin.Context, key string) (string, error) {
 	cookie, err := c.Cookie(key)
 	if err != nil {
-		return "", ErrEmptyCookieToken
+		return "", MsgErrTokenClientInvalid("令牌为空")
 	}
 
 	if cookie == "" {
-		return "", ErrEmptyCookieToken
+		return "", MsgErrTokenClientInvalid("令牌为空")
 	}
 
 	return cookie, nil
@@ -711,7 +664,7 @@ func (mw *GinJWTMiddleware) jwtFromParam(c *gin.Context, key string) (string, er
 	token := c.Param(key)
 
 	if token == "" {
-		return "", ErrEmptyParamToken
+		return "", MsgErrTokenClientInvalid("令牌为空")
 	}
 
 	return token, nil
@@ -722,7 +675,7 @@ func (mw *GinJWTMiddleware) jwtFromForm(c *gin.Context, key string) (string, err
 	token := c.PostForm(key)
 
 	if token == "" {
-		return "", ErrEmptyFormToken
+		return "", MsgErrTokenClientInvalid("令牌为空")
 	}
 
 	return token, nil
@@ -765,7 +718,7 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 
 	return jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if jwt.GetSigningMethod(mw.SigningAlgorithm) != t.Method {
-			return nil, ErrInvalidSigningAlgorithm
+			return nil, MsgErrTokenClientInvalid("无效的签名算法")
 		}
 		if mw.usingPublicKeyAlgo() {
 			return mw.pubKey, nil
@@ -786,7 +739,7 @@ func (mw *GinJWTMiddleware) ParseTokenString(token string) (*jwt.Token, error) {
 
 	return jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if jwt.GetSigningMethod(mw.SigningAlgorithm) != t.Method {
-			return nil, ErrInvalidSigningAlgorithm
+			return nil, MsgErrTokenClientInvalid("无效的签名算法")
 		}
 		if mw.usingPublicKeyAlgo() {
 			return mw.pubKey, nil

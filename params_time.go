@@ -49,11 +49,11 @@ func (req *ReqDateTimeStartEnd) parse() error {
 	var err error
 	req.startDateTime, err = parseOptional(req.StartDateTime, ParseDateTimeValue)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.endDateTime, err = parseOptional(req.EndDateTime, ParseDateTimeValue)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.isParse = true
 
@@ -104,7 +104,7 @@ func (req *ReqDateTime) parse() error {
 	if req.DateTime != "" {
 		s, err := ParseDateTimeValue(req.DateTime)
 		if err != nil {
-			return MsgErrInvalidParam(err)
+			return MsgErrInvalidParam(err.Error())
 		}
 		req.dateTime = s
 	}
@@ -172,11 +172,11 @@ func (req *ReqDateStartEnd) parse() error {
 	var err error
 	req.startDate, err = parseOptional(req.StartDate, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.endDate, err = parseOptional(req.EndDate, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.isParse = true
 	return nil
@@ -225,7 +225,7 @@ func (req *ReqDate) parse() error {
 	var err error
 	req.date, err = parseOptional(req.Date, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.isParse = true
 	return nil
@@ -290,7 +290,7 @@ func (req *ReqTimeStartEnd) parse() error {
 	var err error
 	req.startTime, err = parseOptional(req.StartTime, ParseTimeOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.endTime, err = parseOptional(req.EndTime, ParseTimeOnly)
 	req.isParse = true
@@ -341,7 +341,7 @@ func (req *ReqTime) parse() error {
 	var err error
 	req.time, err = parseOptional(req.Time, ParseTimeOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.isParse = true
 	return nil
@@ -406,7 +406,7 @@ func (req *ReqTimeHourMinuteStartEnd) parse() error {
 	var err error
 	req.startTimeHourMinute, err = parseOptional(req.StartTimeHourMinute, ParseHourMinute)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.endTimeHourMinute, err = parseOptional(req.EndTimeHourMinute, ParseHourMinute)
 	if err != nil {
@@ -460,7 +460,7 @@ func (req *ReqTimeHourMinute) parse() error {
 	var err error
 	req.timeHourMinute, err = parseOptional(req.TimeHourMinute, ParseHourMinute)
 	if err != nil {
-		return MsgErrInvalidParam(err)
+		return MsgErrInvalidParam(err.Error())
 	}
 	req.isParse = true
 	return nil

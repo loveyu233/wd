@@ -16,11 +16,14 @@ var (
 	globalApiPrefix string
 )
 
-// InitHTTPServerAndStart 用来根据路由配置启动 HTTP 服务并注册钩子。
+// InitHTTPServerAndStart 用来根据路由配置启动 HTTP 服务并注册钩子。如果初始化了GinJWTMiddleware则默认会添加上
 func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOptionFunc) *HTTPServer {
 	var config RouterConfig
 	for _, opt := range opts {
 		opt(&config)
+	}
+	if InsGinJWTMiddleware != nil && !config.skipGinJWTMiddleware {
+		config.authMiddleware = append(config.authMiddleware, InsGinJWTMiddleware.MiddlewareFunc())
 	}
 	if config.model == "" {
 		config.model = "debug"

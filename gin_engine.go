@@ -12,18 +12,19 @@ var (
 )
 
 type RouterConfig struct {
-	outputHealthz    bool              // 是否输出健康检查请求的日志输出
-	model            GinModel          // gin启动模式
-	prefix           string            // api前缀
-	authMiddleware   []gin.HandlerFunc // 认证api的中间件
-	globalMiddleware []gin.HandlerFunc // 全局中间件
-	recordHeaderKeys []string          // 需要记录的请求头
-	saveLog          func(ReqLog)      // 保存请求日志
-	readTimeout      time.Duration
-	writeTimeout     time.Duration
-	idleTimeout      time.Duration
-	maxHeaderBytes   int
-	skipLog          bool
+	outputHealthz        bool              // 是否输出健康检查请求的日志输出
+	model                GinModel          // gin启动模式
+	prefix               string            // api前缀
+	authMiddleware       []gin.HandlerFunc // 认证api的中间件
+	globalMiddleware     []gin.HandlerFunc // 全局中间件
+	recordHeaderKeys     []string          // 需要记录的请求头
+	saveLog              func(ReqLog)      // 保存请求日志
+	readTimeout          time.Duration
+	writeTimeout         time.Duration
+	idleTimeout          time.Duration
+	maxHeaderBytes       int
+	skipLog              bool
+	skipGinJWTMiddleware bool
 }
 
 type GinModel string
@@ -45,6 +46,13 @@ type GinRouterConfigOptionFunc func(*RouterConfig)
 func WithGinSkipLog(skipLog bool) GinRouterConfigOptionFunc {
 	return func(config *RouterConfig) {
 		config.skipLog = skipLog
+	}
+}
+
+// WithSkipGinJWTMiddleware 如果设置了true，会在默认的认证中间件跳过，如果在初始化配置了添加则不会跳过
+func WithSkipGinJWTMiddleware(skipGinJWTMiddleware bool) GinRouterConfigOptionFunc {
+	return func(config *RouterConfig) {
+		config.skipGinJWTMiddleware = skipGinJWTMiddleware
 	}
 }
 
@@ -140,7 +148,6 @@ func initPrivateRouter(config RouterConfig) *gin.Engine {
 		}
 	})
 	publicRoutes = append(publicRoutes, PublicRoutes...)
-
 	privateRoutes := append(make([]func(*gin.RouterGroup), 0, len(PrivateRoutes)), PrivateRoutes...)
 
 	config.globalMiddleware = append(config.globalMiddleware, MiddlewareTraceID(), MiddlewareRequestTime(), MiddlewareRecovery())
