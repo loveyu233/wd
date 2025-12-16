@@ -1,15 +1,33 @@
 package wd
 
 import (
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 var (
-	PublicRoutes  = make([]func(*gin.RouterGroup), 0) // 存储无需认证的公开路由处理函数
-	PrivateRoutes = make([]func(*gin.RouterGroup), 0) // 存储需要认证的私有路由处理函数
+	PublicRoutes      PublicRoutesType  // 存储无需认证的公开路由处理函数
+	PrivateRoutes     PrivateRoutesType // 存储需要认证的私有路由处理函数
+	publicRoutesLock  sync.Mutex
+	privateRoutesLock sync.Mutex
 )
+
+type PublicRoutesType []func(*gin.RouterGroup)
+type PrivateRoutesType []func(*gin.RouterGroup)
+
+func (pr *PublicRoutesType) Append(f func(*gin.RouterGroup)) {
+	publicRoutesLock.Lock()
+	defer publicRoutesLock.Unlock()
+	*pr = append(*pr, f)
+}
+
+func (pb *PrivateRoutesType) Append(f func(*gin.RouterGroup)) {
+	privateRoutesLock.Lock()
+	defer privateRoutesLock.Unlock()
+	*pb = append(*pb, f)
+}
 
 type RouterConfig struct {
 	outputHealthz        bool              // 是否输出健康检查请求的日志输出
