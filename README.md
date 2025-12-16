@@ -53,6 +53,146 @@ func main() {
 启动后访问 `http://localhost:8080/api/ping` 即可得到统一格式的 JSON 响应，并自动注入 TraceID、访问日志与异常恢复链路。
 
 ## 常见用法示例
+### token快速定义
+```go
+package main
+
+import (
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	wd "github.com/loveyu233/wd"
+	"github.com/spf13/cast"
+)
+
+type User struct {
+	ID       int       `json:"id"`
+	Username string    `json:"username"`
+	Password string    `json:"-"`
+	Role     string    `json:"role"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+var users = map[string]*User{
+	"alice": {ID: 1, Username: "alice", Password: "123456", Role: "admin", JoinedAt: time.Now().AddDate(-1, 0, 0)},
+	"bob":   {ID: 2, Username: "bob", Password: "654321", Role: "member", JoinedAt: time.Now().AddDate(0, -3, 0)},
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+func main() {
+	r := gin.Default()
+
+	err := wd.InitGinJWTMiddleware(&wd.GinJWTMiddleware{
+		Realm:           "jwt demo zone",
+		Key:             []byte("demo-secret-change-me"),
+		Timeout:         15 * time.Minute,
+		MaxRefresh:      time.Hour,
+		IdentityKey:     "user_id",
+		TokenLookup:     "header:Authorization,cookie:demo-token",
+		TokenHeadName:   "Bearer",
+		SendCookie:      true,
+		CookieName:      "demo-token",
+		CookieHTTPOnly:  true,
+		CookieSameSite:  http.SameSiteLaxMode,
+		Authenticator:   authenticate,
+		Authorizator:    authorizator,
+		PayloadFunc:     payloadFunc,
+		IdentityHandler: identityHandler,
+	})
+	if err != nil {
+		log.Fatalf("jwt init failed: %v", err)
+	}
+
+	r.POST("/login", wd.InsGinJWTMiddleware.LoginHandler())
+	r.POST("/logout", wd.InsGinJWTMiddleware.LogoutHandler())
+	r.GET("/refresh", wd.InsGinJWTMiddleware.RefreshHandler())
+
+	api := r.Group("/api")
+	api.Use(wd.InsGinJWTMiddleware.MiddlewareFunc())
+	api.GET("/profile", currentUserProfile)
+	api.GET("/claims", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"claims": wd.ExtractClaims(c), "raw_token": wd.GetToken(c)})
+	})
+
+	admin := api.Group("/admin")
+	admin.Use(func(c *gin.Context) {
+		user := c.MustGet("currentUser").(*User)
+		if user.Role != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "仅管理员可访问"})
+			return
+		}
+		c.Next()
+	})
+	admin.GET("/stats", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"total_users":  len(users),
+			"generated_at": time.Now().Format(time.RFC3339),
+		})
+	})
+
+	log.Println("JWT demo server listening on :8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func authenticate(c *gin.Context) (interface{}, error) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return nil, err
+	}
+	user, ok := users[req.Username]
+	if !ok || user.Password != req.Password {
+		return nil, wd.MsgErrBadRequest("账号或密码错误")
+	}
+	return user, nil
+}
+
+func authorizator(data interface{}, c *gin.Context) bool {
+	if u, ok := users[cast.ToString(data)]; ok {
+		c.Set("currentUser", u)
+		return true
+	} else {
+		return false
+	}
+}
+
+func payloadFunc(data interface{}) wd.MapClaims {
+	user, ok := data.(*User)
+	if !ok {
+		return wd.MapClaims{}
+	}
+	return wd.MapClaims{
+		"user_id":   user.ID,
+		"username":  user.Username,
+		"role":      user.Role,
+		"joined_at": user.JoinedAt.Unix(),
+	}
+}
+
+func identityHandler(c *gin.Context) interface{} {
+	claims := wd.ExtractClaims(c)
+	return claims["username"]
+}
+
+func currentUserProfile(c *gin.Context) {
+	user := c.MustGet("currentUser").(*User)
+	claims := wd.ExtractClaims(c)
+	c.JSON(http.StatusOK, gin.H{
+		"user":         user,
+		"claims":       claims,
+		"expires_in":   claims["exp"],
+		"token_issued": claims["orig_iat"],
+	})
+}
+```
+
 ### Redis 客户端
 示例依赖 `time` 包：
 ```go
