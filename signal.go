@@ -14,20 +14,28 @@ type Hook interface {
 	WithSignals(signals ...syscall.Signal) Hook
 
 	// Close register shutdown handles
-	Close(funcs ...func())
+	Close()
+
+	AppendFun(funcs ...func())
 }
 
 type SignalHook struct {
-	ctx chan os.Signal
+	ctx        chan os.Signal
+	CloseFuncs []func()
 }
 
-// NewHook 用来创建默认监听 SIGINT/SIGTERM 的信号钩子。
-func NewHook() Hook {
+func (h *SignalHook) AppendFun(funcs ...func()) {
+	h.CloseFuncs = append(h.CloseFuncs, funcs...)
+}
+
+var InsGlobalHook Hook
+
+func init() {
 	hook := &SignalHook{
 		ctx: make(chan os.Signal, 1),
 	}
 
-	return hook.WithSignals(syscall.SIGINT, syscall.SIGTERM)
+	InsGlobalHook = hook.WithSignals(syscall.SIGINT, syscall.SIGTERM)
 }
 
 // WithSignals 用来为钩子追加需要监听的系统信号。
@@ -40,13 +48,13 @@ func (h *SignalHook) WithSignals(signals ...syscall.Signal) Hook {
 }
 
 // Close 用来在收到信号后执行注册的清理函数。
-func (h *SignalHook) Close(funcs ...func()) {
+func (h *SignalHook) Close() {
 	select {
 	case <-h.ctx:
 	}
 	signal.Stop(h.ctx)
 
-	for _, f := range funcs {
+	for _, f := range h.CloseFuncs {
 		f()
 	}
 }

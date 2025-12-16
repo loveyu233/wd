@@ -250,6 +250,24 @@ err := exporter.ExportToFile(users, "users.xlsx")
 
 更多函数可以在对应文件查看注释，所有公共方法都包含中文说明，便于通过 `GoDoc` 或源码直接阅读。
 
+### 添加服务关闭的钩子函数，InsGlobalHook在收到关闭信号时会依次调用AppendFun的函数
+```
+func TestAAA(t *testing.T) {
+	wd.PublicRoutes = append(wd.PublicRoutes, func(group *gin.RouterGroup) {
+		group.GET("/", func(c *gin.Context) {
+			wd.InsGlobalHook.AppendFun(func() {
+				fmt.Println("这是测试关闭的")
+			})
+			c.JSON(200, gin.H{
+				"message": "pong",
+			})
+		})
+	})
+	wd.InitHTTPServerAndStart(":8080")
+}
+
+```
+
 ## 目录速览
 - `middleware_*.go`：TraceID、日志、跨域、请求耗时、异常恢复等 Gin 中间件实现。
 - `http.go` / `gin_engine.go`：服务启动、路由注册、优雅退出逻辑。

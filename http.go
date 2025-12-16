@@ -63,11 +63,15 @@ func (h *HTTPServer) startHTTPServer() {
 
 // setupGracefulShutdown 用来注册系统信号以优雅关闭服务。
 func (h *HTTPServer) setupGracefulShutdown() {
-	NewHook().Close(func() {
+	InsGlobalHook.AppendFun(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 		if err := h.server.Shutdown(ctx); err != nil {
-			log.Printf("setup graceful shutdown err: %s\n", err)
+			log.Printf("http close err: %s\n", err)
+		} else {
+			log.Printf("http close success\n")
 		}
 	})
+
+	InsGlobalHook.Close()
 }
