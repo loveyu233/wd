@@ -1,12 +1,14 @@
 package wd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"strings"
-	"sync"
 
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
 )
@@ -80,31 +82,58 @@ func (req *ReqPageSize) GetOffset() int {
 	return req.offsetValue
 }
 
-// ReqFileUploadGoroutine 用来并发上传多文件并收集结果。
-func ReqFileUploadGoroutine(files []*multipart.FileHeader, uploadFileFunc func(file *multipart.FileHeader) (string, error)) (fileURLS []string, errs []error) {
-	var (
-		group sync.WaitGroup
-		mu    sync.Mutex
-	)
+type ReqFiles struct {
+	Files []*multipart.FileHeader `form:"files"`
+}
 
-	for _, fileHeader := range files {
-		fh := fileHeader
-		group.Add(1)
-		go func(header *multipart.FileHeader) {
-			defer group.Done()
-			url, err := uploadFileFunc(header)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				errs = append(errs, err)
-				return
-			}
-			fileURLS = append(fileURLS, url)
-		}(fh)
+func (r *ReqFiles) UploadFiles(ctx context.Context, uploadFileFunc func(file *multipart.FileHeader) (string, error), sem ...int64) (success map[string]string, err error) {
+	return FilesUploadGoroutine(ctx, r.Files, uploadFileFunc, sem...)
+}
+
+// FilesUploadGoroutine 用来并发上传多文件并收集结果。
+func FilesUploadGoroutine(ctx context.Context, files []*multipart.FileHeader, uploadFileFunc func(file *multipart.FileHeader) (string, error), sem ...int64) (success map[string]string, err error) {
+	if len(sem) == 0 {
+		sem = []int64{5}
 	}
-	group.Wait()
 
-	return fileURLS, errs
+	type successItem struct {
+		Filename string
+		Url      string
+	}
+
+	var (
+		weighted = semaphore.NewWeighted(sem[0])
+		fileChan = make(chan successItem, len(files))
+	)
+	success = make(map[string]string)
+
+	g := new(errgroup.Group)
+	for _, fileHeader := range files {
+		g.Go(func() error {
+			if ctxErr := weighted.Acquire(ctx, 1); err != nil {
+				return ctxErr
+			}
+			defer weighted.Release(1)
+			fileFunc, err := uploadFileFunc(fileHeader)
+			if err != nil {
+				return err
+			}
+			fileChan <- successItem{
+				Filename: fileHeader.Filename,
+				Url:      fileFunc,
+			}
+			return nil
+		})
+	}
+	err = g.Wait()
+	close(fileChan)
+	if err != nil {
+		return
+	}
+	for ele := range fileChan {
+		success[ele.Filename] = ele.Url
+	}
+	return
 }
 
 type ReqFile struct {
@@ -183,13 +212,13 @@ func (r *ReqFile) GetFileSize() (int64, error) {
 	return r.File.Size, nil
 }
 
-func (r *ReqFile) UploadFile(uploadFileFunc func(file *multipart.FileHeader) (string, error)) (string, error) {
-	urls, errs := ReqFileUploadGoroutine([]*multipart.FileHeader{r.File}, uploadFileFunc)
-	if len(errs) > 0 {
-		return "", errs[0]
+func (r *ReqFile) UploadFile(ctx context.Context, uploadFileFunc func(file *multipart.FileHeader) (string, error)) (string, error) {
+	urls, err := FilesUploadGoroutine(ctx, []*multipart.FileHeader{r.File}, uploadFileFunc)
+	if err != nil {
+		return "", err
 	}
-	if len(urls) > 0 {
-		return urls[0], nil
+	if v, ok := urls[r.File.Filename]; ok {
+		return v, nil
 	}
 	return "", MsgErrRequestExternalService("上传文件失败")
 }
