@@ -12,19 +12,36 @@ import (
 
 type CustomTime interface {
 	Time() time.Time
+	Type() string
 }
 
 // DateTime 完整的日期时间类型 (YYYY-MM-DD HH:MM:SS)
 type DateTime time.Time
 
+func (d DateTime) Type() string {
+	return "date_time"
+}
+
 // DateOnly 只有日期的类型 (YYYY-MM-DD)
 type DateOnly time.Time
+
+func (d DateOnly) Type() string {
+	return "date_only"
+}
 
 // TimeOnly 只有时间的类型，包含秒 (HH:MM:SS)
 type TimeOnly time.Time
 
+func (d TimeOnly) Type() string {
+	return "time_only"
+}
+
 // TimeHourMinute 只有小时分钟的时间类型 (HH:MM)
 type TimeHourMinute time.Time
+
+func (d TimeHourMinute) Type() string {
+	return "time_hour_minute"
+}
 
 // ========== DateTime 转换方法 ==========
 
