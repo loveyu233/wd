@@ -46,7 +46,7 @@ func GenCustomTimeBetween(table schema.Tabler, column field.IColumnName, left, r
 }
 
 // GenNewCustomTimeEq 判断column这个列的值是否是dateTime这个日期
-func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime CustomTime) field.Expr {
+func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime CustomTime, timeHourMinuteComplements ...bool) field.Expr {
 	customTimeType := dateTime.Type()
 
 	switch customTimeType {
@@ -57,7 +57,13 @@ func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime 
 	case "time_only":
 		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) = ?", table.TableName(), column.ColumnName().String()), dateTime)
 	case "time_hour_minute":
-		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) = ?", table.TableName(), column.ColumnName().String()), fmt.Sprintf("%s:00", dateTime))
+		var value string
+		if len(timeHourMinuteComplements) > 0 && timeHourMinuteComplements[0] {
+			value = fmt.Sprintf("%s", dateTime)
+		} else {
+			value = fmt.Sprintf("%s:00", dateTime)
+		}
+		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) = ?", table.TableName(), column.ColumnName().String()), value)
 	default:
 		return nil
 	}
