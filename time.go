@@ -157,14 +157,17 @@ func ParseDateOnly(value string) (DateOnly, error) {
 	return DateOnly(parsed), nil
 }
 
-// ParseClock 解析时间字符串为 time.Time。
-func ParseClock(value string) (time.Time, error) {
+// ParseTimeClock 解析时间字符串为 time.Time。
+func ParseTimeClock(value string) (time.Time, error) {
 	return time.ParseInLocation(CSTLayoutTime, value, ShangHaiTimeLocation)
+}
+func ParseHourMinuteClock(value string) (time.Time, error) {
+	return time.ParseInLocation(CSTLayoutTimeHourMinutes, value, ShangHaiTimeLocation)
 }
 
 // MustParseClock 解析时间字符串，失败返回零值。
 func MustParseClock(value string) time.Time {
-	parsed, err := ParseClock(value)
+	parsed, err := ParseTimeClock(value)
 	if err != nil {
 		return time.Time{}
 	}
@@ -173,7 +176,7 @@ func MustParseClock(value string) time.Time {
 
 // ParseTimeOnly 解析时间字符串为 TimeOnly。
 func ParseTimeOnly(value string) (TimeOnly, error) {
-	parsed, err := ParseClock(value)
+	parsed, err := ParseTimeClock(value)
 	if err != nil {
 		return TimeOnly{}, err
 	}
@@ -182,7 +185,7 @@ func ParseTimeOnly(value string) (TimeOnly, error) {
 
 // ParseHourMinute 解析时间字符串并返回时分结构。
 func ParseHourMinute(value string) (TimeHourMinute, error) {
-	parsed, err := ParseClock(value)
+	parsed, err := ParseHourMinuteClock(value)
 	if err != nil {
 		return TimeHourMinute{}, err
 	}

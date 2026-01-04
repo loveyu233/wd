@@ -45,8 +45,8 @@ func GenCustomTimeBetween(table schema.Tabler, column field.IColumnName, left, r
 	}
 }
 
-// GenCustomTimeEq 判断column这个列的值是否是dateTime这个日期
-func GenCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime CustomTime) field.Expr {
+// GenNewCustomTimeEq 判断column这个列的值是否是dateTime这个日期
+func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime CustomTime) field.Expr {
 	customTimeType := dateTime.Type()
 
 	switch customTimeType {

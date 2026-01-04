@@ -243,7 +243,7 @@ func (req *ReqDate) GenWhereFilters(table schema.Tabler, filed field.Field) (fie
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return GenCustomTimeEq(table, filed, req.date), nil
+	return GenNewCustomTimeEq(table, filed, req.date), nil
 }
 
 type ReqTimeStartEnd struct {
@@ -359,7 +359,7 @@ func (req *ReqTime) GenWhereFilters(table schema.Tabler, column field.IColumnNam
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return GenCustomTimeEq(table, column, req.time), nil
+	return GenNewCustomTimeEq(table, column, req.time), nil
 }
 
 type ReqTimeHourMinuteStartEnd struct {
@@ -480,7 +480,7 @@ func (req *ReqTimeHourMinute) GenWhereFilters(table schema.Tabler, column field.
 	if !req.Enabled() {
 		return nil, nil
 	}
-	return GenCustomTimeEq(table, column, req.timeHourMinute), nil
+	return GenNewCustomTimeEq(table, column, req.timeHourMinute), nil
 }
 
 func parseOptional[T any](raw string, parse func(string) (T, error)) (value T, err error) {
