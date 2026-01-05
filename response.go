@@ -75,7 +75,10 @@ var (
 	ErrDatabase   = NewAppError(500001, "数据库错误")
 	ErrRedis      = NewAppError(500002, "redis错误")
 
-	EncryptErr = NewAppError(600000, "加密错误")
+	ErrEncrypt = NewAppError(600000, "加密错误")
+
+	ErrOther = NewAppError(999999, "其他错误")
+
 	// ... 可以继续添加其他预定义错误
 )
 
@@ -141,7 +144,7 @@ func MsgErrRedis(msg string, args ...any) *AppError {
 }
 
 func MsgEncryptErr(msg string, args ...any) *AppError {
-	return EncryptErr.WithMessage(msg, args...)
+	return ErrEncrypt.WithMessage(msg, args...)
 }
 
 func ErrIsAppErr(err error, appErr *AppError) bool {
@@ -192,7 +195,7 @@ func ConvertToAppError(err error) *AppError {
 		return ErrDatabase.WithMessage(mysqlErr.Message)
 	}
 
-	return ErrServerBusy.WithMessage(err.Error())
+	return ErrOther.WithMessage(err.Error())
 }
 
 type Response struct {
@@ -247,8 +250,8 @@ func ResponseSuccessEncryptData(c *gin.Context, data interface{}, custom func(no
 	response, err := EncryptData(data, custom)
 	if err != nil {
 		c.JSON(http.StatusOK, &Response{
-			Code:    EncryptErr.Code,
-			Message: EncryptErr.Message,
+			Code:    ErrEncrypt.Code,
+			Message: ErrEncrypt.Message,
 		})
 		return
 	}
