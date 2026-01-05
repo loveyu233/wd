@@ -97,8 +97,8 @@ func (w *WxMiniMsgClient) SubscribeMessageSend(ctx context.Context, content WxMi
 				k1: v1,
 			}
 		}
-
 	}
+
 	resp, err := w.App.SubscribeMessage.Send(ctx, &request.RequestSubscribeMessageSend{
 		ToUser:           content.ToUserOpenID,
 		TemplateID:       content.TemplateID,
@@ -110,5 +110,6 @@ func (w *WxMiniMsgClient) SubscribeMessageSend(ctx context.Context, content WxMi
 	if err != nil {
 		return nil, err
 	}
+
 	return resp, nil
 }

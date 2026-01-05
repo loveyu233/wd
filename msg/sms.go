@@ -9,14 +9,14 @@ import (
 )
 
 var (
-	InsShortMsg = new(ShortMsgConfig)
+	InsSMS = new(SMSConfig)
 )
 
-type ShortMsgConfig struct {
+type SMSConfig struct {
 	client *dysmsapi20170525.Client
 }
 
-func InitShortMsgClient(credentialConfig *credential.Config, endpoint string) error {
+func InitSMSClient(credentialConfig *credential.Config, endpoint string) error {
 	newCredential, err := credential.NewCredential(credentialConfig)
 	if err != nil {
 		return err
@@ -31,21 +31,21 @@ func InitShortMsgClient(credentialConfig *credential.Config, endpoint string) er
 	if err != nil {
 		return err
 	}
-	InsShortMsg = &ShortMsgConfig{
+	InsSMS = &SMSConfig{
 		client: result,
 	}
 	return nil
 }
 
-func InitShortMsgSimpleClient(accessKeyId, accessKeySecret string) error {
-	return InitShortMsgClient(new(credential.Config).
+func InitSMSSimpleClient(accessKeyId, accessKeySecret string) error {
+	return InitSMSClient(new(credential.Config).
 		SetType("access_key").
 		SetAccessKeyId(accessKeyId).
 		SetAccessKeySecret(accessKeySecret),
 		"dysmsapi.aliyuncs.com")
 }
 
-func (s *ShortMsgConfig) SendMsg(sendSmsRequest *dysmsapi20170525.SendSmsRequest) error {
+func (s *SMSConfig) SendMsg(sendSmsRequest *dysmsapi20170525.SendSmsRequest) error {
 	runtime := &util.RuntimeOptions{}
 	tryErr := func() (e error) {
 		defer func() {
@@ -66,7 +66,7 @@ func (s *ShortMsgConfig) SendMsg(sendSmsRequest *dysmsapi20170525.SendSmsRequest
 	return nil
 }
 
-func (s *ShortMsgConfig) SendSimpleMsg(targetPhoneNumber, signName, templateCode, templateParam string) error {
+func (s *SMSConfig) SendSimpleMsg(targetPhoneNumber, signName, templateCode, templateParam string) error {
 	return s.SendMsg(&dysmsapi20170525.SendSmsRequest{
 		PhoneNumbers:  tea.String(targetPhoneNumber),
 		SignName:      tea.String(signName),
@@ -76,7 +76,7 @@ func (s *ShortMsgConfig) SendSimpleMsg(targetPhoneNumber, signName, templateCode
 }
 
 // SendBatchSms 批量发送短信
-func (s *ShortMsgConfig) SendBatchSms(sendBatchSmsRequest *dysmsapi20170525.SendBatchSmsRequest) error {
+func (s *SMSConfig) SendBatchSms(sendBatchSmsRequest *dysmsapi20170525.SendBatchSmsRequest) error {
 	runtime := &util.RuntimeOptions{}
 	tryErr := func() (e error) {
 		defer func() {
@@ -102,7 +102,7 @@ func (s *ShortMsgConfig) SendBatchSms(sendBatchSmsRequest *dysmsapi20170525.Send
 // signNames: 多个签名，用逗号分隔，与手机号一一对应
 // templateCode: 模板CODE
 // templateParams: 多个模板参数，用逗号分隔的JSON字符串，与手机号一一对应
-func (s *ShortMsgConfig) SendSimpleBatchMsg(targetPhoneNumbers, signNames, templateCode, templateParams string) error {
+func (s *SMSConfig) SendSimpleBatchMsg(targetPhoneNumbers, signNames, templateCode, templateParams string) error {
 	return s.SendBatchSms(&dysmsapi20170525.SendBatchSmsRequest{
 		PhoneNumberJson:   tea.String(targetPhoneNumbers),
 		SignNameJson:      tea.String(signNames),
