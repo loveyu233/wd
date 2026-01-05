@@ -81,9 +81,12 @@ func PasswordEncryption(password string) (string, error) {
 	return string(fromPassword), nil
 }
 
-// PasswordCompare 用来比较加密密码与输入密码。
-func PasswordCompare(hashedPassword, password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)) == nil
+// PasswordCompare 用来对比密码是否正确，inputPassword 输入的密码，originalPassword 原始密码,两个密码均不能为空字符串
+func PasswordCompare(inputPassword, originalPassword string) bool {
+	if inputPassword == "" || originalPassword == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(inputPassword), []byte(originalPassword)) == nil
 }
 
 // PasswordValidateStrength 用来检测密码的长度和复杂度是否合规。
