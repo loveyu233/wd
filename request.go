@@ -19,7 +19,7 @@ type ReqKeyword struct {
 }
 
 func (req *ReqKeyword) parse() {
-	req.keywordLike = fmt.Sprintf("%%%s%%", req.Keyword)
+	req.keywordLike = fmt.Sprintf("%%%s%%", strings.TrimSpace(req.Keyword))
 }
 func (req *ReqKeyword) KeywordLikeValue() string {
 	req.parse()
