@@ -28,6 +28,7 @@ const (
 	CSTLayoutYearMonthPoint         = "2006.01.02"
 	CSTLayoutSecond                 = "20060102150405"
 	DateDirLayout                   = "2006/0101"
+	DateDirsLayout                  = "2006/01/01"
 
 	DayStartTimeStr = "00:00:00"
 	DayEndTimeStr   = "23:59:59"
