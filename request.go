@@ -11,28 +11,35 @@ import (
 	"golang.org/x/sync/semaphore"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
+	"gorm.io/gorm/schema"
 )
 
 type ReqKeyword struct {
 	Keyword     string `json:"keyword" form:"keyword"`
 	keywordLike string
+	isParse     bool
 }
 
 func (req *ReqKeyword) parse() {
 	req.keywordLike = fmt.Sprintf("%%%s%%", strings.TrimSpace(req.Keyword))
+	req.isParse = true
 }
 func (req *ReqKeyword) KeywordLikeValue() string {
+	if req.isParse {
+		return req.keywordLike
+	}
 	req.parse()
 	return req.keywordLike
 }
-func (req *ReqKeyword) GenWhereFilters(columns field.String) gen.Condition {
-	req.Keyword = strings.TrimSpace(req.Keyword)
-	if req.Keyword == "" {
+func (req *ReqKeyword) GenWhereFilters(table schema.Tabler, column field.IColumnName) gen.Condition {
+	if strings.TrimSpace(req.Keyword) == "" {
 		return nil
 	}
-	req.parse()
+	if !req.isParse {
+		req.parse()
+	}
 
-	return columns.Like(req.keywordLike)
+	return field.NewString(table.TableName(), column.ColumnName().String()).Like(req.keywordLike)
 }
 
 type ReqPageSize struct {
