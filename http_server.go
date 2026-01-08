@@ -26,7 +26,7 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOptionFunc
 		config.authMiddleware = append(config.authMiddleware, InsGinJWTMiddleware.MiddlewareFunc())
 	}
 	if config.model == "" {
-		config.model = "debug"
+		config.model = GinModelDebug
 	}
 	if config.prefix == "" {
 		config.prefix = "/api"
