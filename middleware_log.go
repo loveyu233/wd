@@ -24,7 +24,7 @@ type LogEntry struct {
 	Level   zerolog.Level
 	Message string
 	Fields  map[string]any
-	Time    time.Time
+	Time    string
 }
 
 // RequestLogger 存储请求链路中的所有日志
@@ -53,7 +53,7 @@ func (rl *RequestLogger) AddEntry(level zerolog.Level, message string, fields ma
 		Level:   level,
 		Message: message,
 		Fields:  make(map[string]any),
-		Time:    Now(),
+		Time:    Now().Format(CSTLayout),
 	}
 
 	// 复制字段避免并发问题
@@ -82,7 +82,7 @@ func (rl *RequestLogger) Flush() {
 		logEntry := map[string]any{
 			"level":     entry.Level.String(),
 			"message":   entry.Message,
-			"timestamp": entry.Time.Format(time.RFC3339Nano),
+			"timestamp": entry.Time,
 		}
 
 		// 添加字段
@@ -94,9 +94,9 @@ func (rl *RequestLogger) Flush() {
 	}
 
 	// 输出合并的日志
-	event.Interface("链路日志", logEntries).
-		Int("总计日志条数", len(rl.entries)).
-		Msg("日志收集完成")
+	event.Interface("link_log", logEntries).
+		Int("log_count", len(rl.entries)).
+		Msg("success")
 }
 
 // ContextLogger 提供链路日志记录功能
@@ -238,6 +238,7 @@ func init() {
 	zerolog.TimestampFunc = func() time.Time {
 		return Now()
 	}
+	zerolog.TimeFieldFormat = CSTLayout
 	zlog = zerolog.New(os.Stdout).With().
 		Timestamp().
 		Logger()
@@ -488,7 +489,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			return
 		}
 
-		duration := time.Since(startTime)
+		duration := Now().Sub(startTime)
 
 		bodyMap := make(map[string]any)
 		if !c.GetBool("brief") {
