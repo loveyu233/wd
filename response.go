@@ -199,10 +199,10 @@ func ConvertToAppError(err error) *AppError {
 }
 
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-	TraceID string      `json:"trace_id,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 // ResponseError 根据错误输出统一的 JSON 响应。
@@ -233,7 +233,7 @@ func ResponseParamError(c *gin.Context, err error) {
 }
 
 // ResponseSuccess 返回包含数据的成功响应。
-func ResponseSuccess(c *gin.Context, data interface{}) {
+func ResponseSuccess(c *gin.Context, data any) {
 	c.Set("resp-status", http.StatusOK)
 	c.Set("resp-msg", "请求成功")
 	c.JSON(http.StatusOK, &Response{
@@ -244,7 +244,7 @@ func ResponseSuccess(c *gin.Context, data interface{}) {
 }
 
 // ResponseSuccessEncryptData 对响应数据进行加密后返回。
-func ResponseSuccessEncryptData(c *gin.Context, data interface{}, custom func(now int64) (key, nonce string)) {
+func ResponseSuccessEncryptData(c *gin.Context, data any, custom func(now int64) (key, nonce string)) {
 	c.Set("resp-status", http.StatusOK)
 	c.Set("resp-msg", "请求成功")
 	response, err := EncryptData(data, custom)
