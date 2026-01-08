@@ -16,3 +16,7 @@ func MiddlewareTraceID() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func GetTraceID(c *gin.Context) string {
+	return c.GetString(TraceIDHeader)
+}
