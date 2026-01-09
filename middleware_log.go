@@ -29,18 +29,20 @@ type LogEntry struct {
 
 // RequestLogger 存储请求链路中的所有日志
 type RequestLogger struct {
-	entries []LogEntry
-	mu      sync.RWMutex
-	ctx     context.Context
-	logger  zerolog.Logger
+	entries    []LogEntry
+	sqlEntries []map[string]any
+	mu         sync.RWMutex
+	ctx        context.Context
+	logger     zerolog.Logger
 }
 
 // NewRequestLogger 用来创建单次请求期间使用的日志缓冲器。
 func NewRequestLogger(ctx context.Context, logger zerolog.Logger) *RequestLogger {
 	return &RequestLogger{
-		entries: make([]LogEntry, 0),
-		ctx:     ctx,
-		logger:  logger,
+		entries:    make([]LogEntry, 0),
+		sqlEntries: make([]map[string]any, 0),
+		ctx:        ctx,
+		logger:     logger,
 	}
 }
 
@@ -64,6 +66,18 @@ func (rl *RequestLogger) AddEntry(level zerolog.Level, message string, fields ma
 	rl.entries = append(rl.entries, entry)
 }
 
+// AddSQLEntry 用来记录 SQL 相关的字段，会在 Flush 时作为一个数组输出。
+func (rl *RequestLogger) AddSQLEntry(fields map[string]any) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	entryFields := make(map[string]any, len(fields))
+	for k, v := range fields {
+		entryFields[k] = v
+	}
+	rl.sqlEntries = append(rl.sqlEntries, entryFields)
+}
+
 // Flush 用来把收集到的日志一次性输出到底层日志器。
 func (rl *RequestLogger) Flush() {
 	rl.mu.RLock()
@@ -77,7 +91,7 @@ func (rl *RequestLogger) Flush() {
 	event := rl.logger.Info()
 
 	// 添加所有收集的日志条目
-	logEntries := make([]map[string]any, 0, len(rl.entries))
+	logEntries := make([]map[string]any, 0, len(rl.entries)+1)
 	for _, entry := range rl.entries {
 		logEntry := map[string]any{
 			"level":     entry.Level.String(),
@@ -93,10 +107,20 @@ func (rl *RequestLogger) Flush() {
 		logEntries = append(logEntries, logEntry)
 	}
 
+	if len(rl.sqlEntries) > 0 {
+		logEntries = append(logEntries, map[string]any{
+			"level":     zerolog.InfoLevel.String(),
+			"message":   "gorm_sql",
+			"timestamp": Now().Format(CSTLayout),
+			"fields": map[string]any{
+				"items": rl.sqlEntries,
+			},
+		})
+	}
+
 	// 输出合并的日志
 	event.Interface("link_log", logEntries).
-		Int("log_count", len(rl.entries)).
-		Msg("success")
+		Msg("record_success")
 }
 
 // ContextLogger 提供链路日志记录功能
@@ -208,6 +232,30 @@ const (
 	RequestLoggerKey contextKey = "request_logger"
 )
 
+// ContextWithRequestLogger 将请求级日志器注入到 context.Context 中，方便链路外部（例如gorm）取用。
+func ContextWithRequestLogger(ctx context.Context, rl *RequestLogger) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, RequestLoggerKey, rl)
+}
+
+// RequestLoggerFromContext 用来从context.Context中提取请求级日志器。
+func RequestLoggerFromContext(ctx context.Context) *RequestLogger {
+	if ctx == nil {
+		return nil
+	}
+	if gc, ok := ctx.(*gin.Context); ok {
+		if requestLogger, exists := gc.Get(string(RequestLoggerKey)); exists {
+			return requestLogger.(*RequestLogger)
+		}
+	}
+	if rl, ok := ctx.Value(RequestLoggerKey).(*RequestLogger); ok {
+		return rl
+	}
+	return nil
+}
+
 // ResponseWriter 是对 gin.ResponseWriter 的包装，用于捕获写入的响应
 type ResponseWriter struct {
 	gin.ResponseWriter
@@ -239,9 +287,6 @@ func init() {
 		return Now()
 	}
 	zerolog.TimeFieldFormat = CSTLayout
-	zlog = zerolog.New(os.Stdout).With().
-		Timestamp().
-		Logger()
 }
 
 type ReqLog struct {
@@ -263,10 +308,10 @@ type ReqLog struct {
 }
 
 type MiddlewareLogConfig struct {
-	HeaderKeys       []string
-	ContentKeys      []string
-	SensitiveHeaders []string
-	SaveLog          func(ReqLog)
+	HeaderKeys  []string
+	ContentKeys []string
+	SaveLog     func(ReqLog)
+	LogWriter   io.Writer
 }
 
 type FileInfo struct {
@@ -277,6 +322,12 @@ type FileInfo struct {
 
 // MiddlewareLogger 用来在 gin 中记录请求与响应的详细日志。
 func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
+	if mc.LogWriter == nil {
+		mc.LogWriter = os.Stdout
+	}
+	zlog = zerolog.New(mc.LogWriter).With().
+		Timestamp().
+		Logger()
 	return func(c *gin.Context) {
 		// 开始时间
 		startTime := Now()
@@ -293,6 +344,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 创建请求日志器
 		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
 		c.Set(string(RequestLoggerKey), requestLogger)
+		//c.Request = c.Request.WithContext(ContextWithRequestLogger(c.Request.Context(), requestLogger))
 
 		c.Next()
 		if c.GetBool("skip") {
@@ -437,14 +489,9 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 
-		maskedHeaders := resolveMaskedHeaders(mc.SensitiveHeaders)
 		headerMap := make(map[string]string)
 		for _, item := range mc.HeaderKeys {
 			value := c.GetHeader(item)
-			if _, ok := maskedHeaders[strings.ToLower(item)]; ok && value != "" {
-				headerMap[item] = "***REDACTED***"
-				continue
-			}
 			headerMap[item] = value
 		}
 
@@ -640,24 +687,6 @@ func recordBodySkip(params map[string]any, reason string) {
 }
 
 var defaultMaskedHeaders = []string{"authorization"}
-
-func resolveMaskedHeaders(custom []string) map[string]struct{} {
-	var headers []string
-	if len(custom) == 0 {
-		headers = defaultMaskedHeaders
-	} else {
-		headers = make([]string, len(custom))
-		copy(headers, custom)
-	}
-	m := make(map[string]struct{}, len(headers))
-	for _, header := range headers {
-		if header == "" {
-			continue
-		}
-		m[strings.ToLower(header)] = struct{}{}
-	}
-	return m
-}
 
 type Mark struct {
 	Name       string

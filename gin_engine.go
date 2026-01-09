@@ -1,6 +1,7 @@
 package wd
 
 import (
+	"io"
 	"sync"
 	"time"
 
@@ -43,6 +44,8 @@ type RouterConfig struct {
 	maxHeaderBytes       int
 	skipLog              bool
 	skipGinJWTMiddleware bool
+	logWriter            io.Writer
+	contentKeys          []string
 }
 
 type GinModel string
@@ -64,6 +67,17 @@ type GinRouterConfigOptionFunc func(*RouterConfig)
 func WithGinSkipLog(skipLog bool) GinRouterConfigOptionFunc {
 	return func(config *RouterConfig) {
 		config.skipLog = skipLog
+	}
+}
+
+func WithLogWriter(w io.Writer) GinRouterConfigOptionFunc {
+	return func(config *RouterConfig) {
+		config.logWriter = w
+	}
+}
+func WithLogContentKeys(keys []string) GinRouterConfigOptionFunc {
+	return func(config *RouterConfig) {
+		config.contentKeys = keys
 	}
 }
 
@@ -171,8 +185,10 @@ func initPrivateRouter(config RouterConfig) *gin.Engine {
 	config.globalMiddleware = append(config.globalMiddleware, MiddlewareTraceID(), MiddlewareRequestTime(), MiddlewareRecovery())
 	if !config.skipLog {
 		config.globalMiddleware = append(config.globalMiddleware, MiddlewareLogger(MiddlewareLogConfig{
-			HeaderKeys: config.recordHeaderKeys,
-			SaveLog:    config.saveLog,
+			HeaderKeys:  config.recordHeaderKeys,
+			SaveLog:     config.saveLog,
+			LogWriter:   config.logWriter,
+			ContentKeys: config.contentKeys,
 		}))
 	}
 
