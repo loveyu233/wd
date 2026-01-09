@@ -207,7 +207,7 @@ type Response struct {
 
 // ResponseError 根据错误输出统一的 JSON 响应。
 func ResponseError(c *gin.Context, err error) {
-	GetContextLogger(c).Error().Msg(err.Error())
+	GetContextLogger(c).Error().Msg("resp_err", err.Error())
 	appErr := ConvertToAppError(err)
 	c.Set("resp-status", appErr.Code)
 	c.Set("resp-msg", appErr.Message)
@@ -219,7 +219,7 @@ func ResponseError(c *gin.Context, err error) {
 
 // ResponseParamError 输出校验失败时的 JSON 响应。
 func ResponseParamError(c *gin.Context, err error) {
-	GetContextLogger(c).Error().Msg(err.Error())
+	GetContextLogger(c).Error().Msg("resp_err", err.Error())
 	te := TranslateError(err).Error()
 	c.Set("resp-status", ErrInvalidParam.Code)
 	c.Set("resp-msg", te)

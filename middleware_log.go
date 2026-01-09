@@ -21,10 +21,11 @@ import (
 
 // LogEntry 表示一个日志条目
 type LogEntry struct {
-	Level   zerolog.Level
-	Message string
-	Fields  map[string]any
-	Time    string
+	Level   zerolog.Level  `json:"level"`
+	Key     string         `json:"-"`
+	Message string         `json:"message"`
+	Fields  map[string]any `json:"fields"`
+	Time    string         `json:"time"`
 }
 
 // RequestLogger 存储请求链路中的所有日志
@@ -34,6 +35,8 @@ type RequestLogger struct {
 	mu         sync.RWMutex
 	ctx        context.Context
 	logger     zerolog.Logger
+	durationMs int64
+	statusCode int
 }
 
 // NewRequestLogger 用来创建单次请求期间使用的日志缓冲器。
@@ -45,14 +48,21 @@ func NewRequestLogger(ctx context.Context, logger zerolog.Logger) *RequestLogger
 		logger:     logger,
 	}
 }
+func (r *RequestLogger) SetDurationMs(durationMs int64) {
+	r.durationMs = durationMs
+}
+func (r *RequestLogger) SetStatusCode(statusCode int) {
+	r.statusCode = statusCode
+}
 
 // AddEntry 用来把一条日志事件写入缓冲区。
-func (rl *RequestLogger) AddEntry(level zerolog.Level, message string, fields map[string]any) {
+func (rl *RequestLogger) AddEntry(key string, level zerolog.Level, message string, fields map[string]any) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
 	entry := LogEntry{
 		Level:   level,
+		Key:     key,
 		Message: message,
 		Fields:  make(map[string]any),
 		Time:    Now().Format(CSTLayout),
@@ -91,36 +101,27 @@ func (rl *RequestLogger) Flush() {
 	event := rl.logger.Info()
 
 	// 添加所有收集的日志条目
-	logEntries := make([]map[string]any, 0, len(rl.entries)+1)
+	var latencyMsInfoArr []string
 	for _, entry := range rl.entries {
-		logEntry := map[string]any{
-			"level":     entry.Level.String(),
-			"message":   entry.Message,
-			"timestamp": entry.Time,
+		if entry.Key == "resp_info" || entry.Key == "req_info" {
+			event = event.Any(entry.Key, entry.Fields)
+		} else if entry.Key == "latency_ms_info" {
+			latencyMsInfoArr = append(latencyMsInfoArr, entry.Message)
+		} else {
+			event = event.Any(entry.Key, entry)
 		}
-
-		// 添加字段
-		if len(entry.Fields) > 0 {
-			logEntry["fields"] = entry.Fields
-		}
-
-		logEntries = append(logEntries, logEntry)
+	}
+	if len(latencyMsInfoArr) > 0 {
+		event = event.Strs("latency_ms_info", latencyMsInfoArr)
 	}
 
 	if len(rl.sqlEntries) > 0 {
-		logEntries = append(logEntries, map[string]any{
-			"level":     zerolog.InfoLevel.String(),
-			"message":   "gorm_sql",
-			"timestamp": Now().Format(CSTLayout),
-			"fields": map[string]any{
-				"items": rl.sqlEntries,
-			},
-		})
+		event = event.Any("sql", rl.sqlEntries)
 	}
 
-	// 输出合并的日志
-	event.Interface("link_log", logEntries).
-		Msg("record_success")
+	event = event.Int64("duration_ms", rl.durationMs)
+	event = event.Int("status_code", rl.statusCode)
+	event.Msg("")
 }
 
 // ContextLogger 提供链路日志记录功能
@@ -216,13 +217,13 @@ func (e *ContextLogEvent) Dur(key string, d time.Duration) *ContextLogEvent {
 }
 
 // Msg 用来将事件写入请求日志缓冲区。
-func (e *ContextLogEvent) Msg(msg string) {
-	e.requestLogger.AddEntry(e.level, msg, e.fields)
+func (e *ContextLogEvent) Msg(key, msg string) {
+	e.requestLogger.AddEntry(key, e.level, msg, e.fields)
 }
 
 // Msgf 用来以格式化文本写入请求日志。
-func (e *ContextLogEvent) Msgf(format string, v ...any) {
-	e.requestLogger.AddEntry(e.level, fmt.Sprintf(format, v...), e.fields)
+func (e *ContextLogEvent) Msgf(key, format string, v ...any) {
+	e.requestLogger.AddEntry(key, e.level, fmt.Sprintf(format, v...), e.fields)
 }
 
 // 上下文键
@@ -344,17 +345,17 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 创建请求日志器
 		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
 		c.Set(string(RequestLoggerKey), requestLogger)
-		//c.Request = c.Request.WithContext(ContextWithRequestLogger(c.Request.Context(), requestLogger))
 
 		c.Next()
 		if c.GetBool("skip") {
-			for _, m := range tracker.Marks() {
-				WriteGinInfoLog(c, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
-					m.Name,
-					float64(m.SinceStart.Microseconds())/1000,
-					float64(m.SincePrev.Microseconds())/1000)
-			}
-			requestLogger.Flush()
+			//for _, m := range tracker.Marks() {
+			//	WriteGinInfoLog(c, m.Name, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
+			//		m.Name,
+			//		float64(m.SinceStart.Microseconds())/1000,
+			//		float64(m.SincePrev.Microseconds())/1000)
+			//}
+			//requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
+			//requestLogger.Flush()
 			c.Next()
 			return
 		}
@@ -509,7 +510,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 		// 记录请求开始信息
-		requestLogger.AddEntry(zerolog.InfoLevel, "request", map[string]any{
+		requestLogger.AddEntry("req_info", zerolog.InfoLevel, "request", map[string]any{
 			"req_time":   startTime.Format(CSTLayout),
 			"method":     c.Request.Method,
 			"path":       c.Request.URL.Path,
@@ -523,7 +524,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"content_kv": contentKV,
 		})
 		for _, m := range tracker.Marks() {
-			WriteGinInfoLog(c, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
+			WriteGinInfoLog(c, m.key, "运行至[%s]总耗时=%.2fms 上阶段运行到此耗时=%.2fms",
 				m.Name,
 				float64(m.SinceStart.Microseconds())/1000,
 				float64(m.SincePrev.Microseconds())/1000)
@@ -532,6 +533,8 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		if c.GetBool("only-req") {
 			// 输出所有收集的日志
 			requestLogger.Flush()
+			requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
+			requestLogger.SetStatusCode(c.Writer.Status())
 			c.Next()
 			return
 		}
@@ -559,11 +562,9 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 
-		requestLogger.AddEntry(zerolog.InfoLevel, "response", map[string]any{
-			"status_code": c.Writer.Status(),
-			"duration_ms": duration.Milliseconds(),
-			"resp_body":   bodyMap,
-		})
+		requestLogger.AddEntry("resp_info", zerolog.InfoLevel, "response", bodyMap)
+		requestLogger.SetDurationMs(duration.Milliseconds())
+		requestLogger.SetStatusCode(c.Writer.Status())
 
 		// 输出所有收集的日志
 		requestLogger.Flush()
@@ -591,23 +592,23 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 }
 
 // WriteGinInfoLog 用来在当前请求记录 Info 级别日志。
-func WriteGinInfoLog(c *gin.Context, format string, args ...any) {
-	GetContextLogger(c).Info().Msgf(format, args...)
+func WriteGinInfoLog(c *gin.Context, key, format string, args ...any) {
+	GetContextLogger(c).Info().Msgf(key, format, args...)
 }
 
 // WriteGinDebugLog 用来在当前请求记录 Debug 级别日志。
-func WriteGinDebugLog(c *gin.Context, format string, args ...any) {
-	GetContextLogger(c).Debug().Msgf(format, args...)
+func WriteGinDebugLog(c *gin.Context, key, format string, args ...any) {
+	GetContextLogger(c).Debug().Msgf(key, format, args...)
 }
 
 // WriteGinWarnLog 用来在当前请求记录 Warn 级别日志。
-func WriteGinWarnLog(c *gin.Context, format string, args ...any) {
-	GetContextLogger(c).Warn().Msgf(format, args...)
+func WriteGinWarnLog(c *gin.Context, key, format string, args ...any) {
+	GetContextLogger(c).Warn().Msgf(key, format, args...)
 }
 
 // WriteGinErrLog 用来在当前请求记录 Error 级别日志。
-func WriteGinErrLog(c *gin.Context, format string, args ...any) {
-	GetContextLogger(c).Error().Msgf(format, args...)
+func WriteGinErrLog(c *gin.Context, key, format string, args ...any) {
+	GetContextLogger(c).Error().Msgf(key, format, args...)
 }
 
 // GinLogSetModuleName 用来在上下文中标记模块名称。
@@ -689,6 +690,7 @@ func recordBodySkip(params map[string]any, reason string) {
 var defaultMaskedHeaders = []string{"authorization"}
 
 type Mark struct {
+	key        string
 	Name       string
 	SinceStart time.Duration
 	SincePrev  time.Duration
@@ -712,6 +714,7 @@ func (t *Tracker) Mark(name string) {
 
 	now := time.Now()
 	t.marks = append(t.marks, Mark{
+		key:        "latency_ms_info",
 		Name:       name,
 		SinceStart: now.Sub(t.start),
 		SincePrev:  now.Sub(t.last),
