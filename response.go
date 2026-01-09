@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-sql-driver/mysql"
+	"github.com/spf13/cast"
 	"gorm.io/gorm"
 )
 
@@ -201,8 +202,7 @@ func ConvertToAppError(err error) *AppError {
 type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-	TraceID string `json:"trace_id,omitempty"`
+	Data    any    `json:"data"`
 }
 
 // ResponseError 根据错误输出统一的 JSON 响应。
@@ -232,14 +232,40 @@ func ResponseParamError(c *gin.Context, err error) {
 	})
 }
 
-// ResponseSuccess 返回包含数据的成功响应。
-func ResponseSuccess(c *gin.Context, data any) {
+// ResponseSuccess 返回包含数据的成功响应。如果是非对象时，将数据转为字符串在message中返回
+func ResponseSuccess(c *gin.Context, data any, msg ...string) {
+	var message = "操作成功"
+	if len(msg) > 0 {
+		message = msg[0]
+	}
+	switch data.(type) {
+	case string, int, int8, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
+		ResponseSuccessMsg(c, cast.ToString(data))
+		return
+	}
 	c.Set("resp-status", http.StatusOK)
-	c.Set("resp-msg", "请求成功")
+	c.Set("resp-msg", message)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
-		Message: "请求成功",
+		Message: message,
 		Data:    data,
+	})
+}
+
+// ResponseSuccessMsg 只返回成功的msg没有data
+func ResponseSuccessMsg(c *gin.Context, msg string) {
+	c.Set("resp-status", http.StatusOK)
+	c.Set("resp-msg", msg)
+	c.JSON(http.StatusOK, &Response{
+		Code:    http.StatusOK,
+		Message: msg,
+	})
+}
+
+// ResponseSuccessToken 返回token使用
+func ResponseSuccessToken(c *gin.Context, token string) {
+	ResponseSuccess(c, gin.H{
+		"token": token,
 	})
 }
 

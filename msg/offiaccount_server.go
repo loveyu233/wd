@@ -82,7 +82,7 @@ func (wx *WXOfficial) pushHand(c *gin.Context) {
 		wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("推送消息失败:%s", err.Error()))
 		return
 	}
-	wd.ResponseSuccess(c, nil)
+	wd.ResponseSuccessMsg(c, "发送成功")
 }
 
 func (wx *WXOfficial) Push(toUser []string, message string) (interface{}, error) {

@@ -281,7 +281,7 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 	if mw.LoginResponse == nil {
 		mw.LoginResponse = func(c *gin.Context, code int, token string, expire time.Time) {
 			if code == http.StatusOK {
-				ResponseSuccess(c, token)
+				ResponseSuccessToken(c, token)
 			} else {
 				ResponseError(c, MsgErrInvalidParam("登录失败"))
 			}
@@ -291,7 +291,7 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 	if mw.LogoutResponse == nil {
 		mw.LogoutResponse = func(c *gin.Context, code int) {
 			if code == http.StatusOK {
-				ResponseSuccess(c, "操作成功")
+				ResponseSuccessMsg(c, "操作成功")
 			} else {
 				ResponseError(c, MsgErrServerBusy("操作失败"))
 			}
@@ -301,7 +301,7 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 	if mw.RefreshResponse == nil {
 		mw.RefreshResponse = func(c *gin.Context, code int, token string, expire time.Time) {
 			if code == http.StatusOK {
-				ResponseSuccess(c, token)
+				ResponseSuccessToken(c, token)
 			} else {
 				ResponseError(c, ErrTokenServerInvalid)
 			}

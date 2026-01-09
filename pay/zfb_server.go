@@ -16,6 +16,7 @@ import (
 	alipayv2 "github.com/go-pay/gopay/alipay"
 	"github.com/go-pay/gopay/alipay/v3"
 	"github.com/loveyu233/wd"
+	"github.com/spf13/cast"
 )
 
 // ZfbMiniImp 定义用户相关操作接口
@@ -272,7 +273,7 @@ func (a *ZFBClient) login(c *gin.Context) {
 	}
 	if !exists {
 		if params.EncryptedData == "" {
-			wd.ResponseSuccess(c, map[string]interface{}{
+			wd.ResponseSuccess(c, gin.H{
 				"open_id": session.OpenId,
 			})
 			return
@@ -296,6 +297,11 @@ func (a *ZFBClient) login(c *gin.Context) {
 	data, err := a.zfbMiniImp.GenerateToken(user, session.OpenId)
 	if err != nil {
 		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("token生成失败:%s", err.Error()))
+		return
+	}
+	switch data.(type) {
+	case string, int, int8, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
+		wd.ResponseSuccessToken(c, cast.ToString(data))
 		return
 	}
 	wd.ResponseSuccess(c, data)

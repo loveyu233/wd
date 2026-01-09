@@ -8,6 +8,7 @@ import (
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/power"
 	"github.com/gin-gonic/gin"
 	"github.com/loveyu233/wd"
+	"github.com/spf13/cast"
 )
 
 func (w *WXMini) RegisterHandlers(r *gin.RouterGroup) {
@@ -50,7 +51,7 @@ func (w *WXMini) login(c *gin.Context) {
 	if !exists {
 		if params.EncryptedData == "" {
 			//如果是用户首次自动登录 没有授权手机号 就返回给用户open_id
-			wd.ResponseSuccess(c, map[string]interface{}{
+			wd.ResponseSuccess(c, gin.H{
 				"open_id": session.OpenID,
 			})
 			return
@@ -77,6 +78,11 @@ func (w *WXMini) login(c *gin.Context) {
 	data, err := w.generateToken(user, session.SessionKey)
 	if err != nil {
 		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("token生成失败:%s", err.Error()))
+		return
+	}
+	switch data.(type) {
+	case string, int, int8, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
+		wd.ResponseSuccessToken(c, cast.ToString(data))
 		return
 	}
 	wd.ResponseSuccess(c, data)
