@@ -621,10 +621,10 @@ func shouldCaptureRequestBody(r *http.Request) (bool, string) {
 		return false, "request is nil"
 	}
 	if r.Body == nil || r.Body == http.NoBody {
-		return false, "request body is empty"
+		return false, "无请求数据"
 	}
 	if r.ContentLength == -1 {
-		return false, "request body size is unknown (chunked transfer)"
+		return false, "请求数据错误大小为-1"
 	}
 	return true, ""
 }
