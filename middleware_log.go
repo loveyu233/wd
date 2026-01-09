@@ -514,7 +514,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 
 		requestLogger.AddEntry(zerolog.InfoLevel, "response", map[string]any{
 			"status_code": c.Writer.Status(),
-			"duration":    duration.String(),
+			"duration_ms": duration.Milliseconds(),
 			"resp_body":   bodyMap,
 		})
 
