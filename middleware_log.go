@@ -256,7 +256,7 @@ type ReqLog struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	Params      map[string]any    `json:"params,omitempty"`
 	Status      int               `json:"status,omitempty"`
-	Latency     time.Duration     `json:"latency,omitempty"`
+	LatencyMs   int64             `json:"latency_ms,omitempty"`
 	Body        map[string]any    `json:"body,omitempty"`
 	RespStatus  int               `json:"resp_status"`  // 响应数据中的状态码
 	RespMessage string            `json:"resp_message"` // 响应数据中的message
@@ -534,7 +534,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				Headers:     headerMap,
 				Params:      params,
 				Status:      c.Writer.Status(),
-				Latency:     duration,
+				LatencyMs:   duration.Milliseconds(),
 				Body:        bodyMap,
 				RespStatus:  c.GetInt("resp-status"),
 				RespMessage: c.GetString("resp-msg"),
