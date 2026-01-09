@@ -63,7 +63,7 @@ func TranslateError(err error) error {
 // registerTagNameFunc 让验证器优先使用 json 标签作为字段名。
 func registerTagNameFunc(v *validator.Validate) {
 	v.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+		name := strings.SplitN(fld.Tag.Get(CUSTOMCONSTJSONTAG), ",", 2)[0]
 		if name == "-" {
 			return ""
 		}
@@ -147,7 +147,7 @@ func registerTranslator(v *validator.Validate) (trans ut.Translator, err error) 
 	zhTrans := zh.New()
 	uni := ut.New(zhTrans, zhTrans)
 
-	trans, found := uni.GetTranslator("zh")
+	trans, found := uni.GetTranslator(CUSTOMCONSTZHLOCALE)
 	if !found {
 		return nil, errors.New("无法找到中文翻译器")
 	}

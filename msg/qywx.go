@@ -112,7 +112,7 @@ func (c *qwRobotConfig) UploadMedia(reader io.Reader, filename string, mediaType
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set(CUSTOMCONSTCONTENTTYPE, writer.FormDataContentType())
 
 	// 发送请求
 	resp, err := c.httpClient.Do(req)
@@ -288,7 +288,7 @@ func (c *qwRobotConfig) SendMessage(msg QYWXMessage) (*QYWXSendResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(CUSTOMCONSTCONTENTTYPE, CUSTOMCONSTAPPLICATIONJSON)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -323,7 +323,7 @@ func (e *ExcelExporter) getExportStructInfo(elemType reflect.Type) (*exportStruc
 	columnIndex := 0
 	for i := 0; i < elemType.NumField(); i++ {
 		field := elemType.Field(i)
-		tag := field.Tag.Get("excel")
+		tag := field.Tag.Get(CUSTOMCONSTEXCELTAG)
 
 		if tag == "" || tag == "-" {
 			continue

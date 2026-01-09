@@ -106,13 +106,13 @@ type ZFBPayParam struct {
 // TradeCreate 支付
 func (a *ZFBClient) TradeCreate(param *ZFBPayParam) (aliRsp *alipay.TradeCreateRsp, err error) {
 	bm := make(gopay.BodyMap)
-	bm.Set("out_trade_no", param.OutTradeNo).
-		Set("total_amount", param.TotalAmount).
-		Set("product_code", "JSAPI_PAY").
-		Set("op_app_id", a.appid).
-		Set("buyer_open_id", param.BuyerOpenID).
-		Set("notify_url", a.notifyUrl).
-		Set("subject", param.Subject)
+	bm.Set(CUSTOMCONSTOUTTRADENO, param.OutTradeNo).
+		Set(CUSTOMCONSTTOTALAMOUNT, param.TotalAmount).
+		Set(CUSTOMCONSTPRODUCTCODE, CUSTOMCONSTJSAPIPAY).
+		Set(CUSTOMCONSTOPAPPID, a.appid).
+		Set(CUSTOMCONSTBUYEROPENID, param.BuyerOpenID).
+		Set(CUSTOMCONSTNOTIFYURL, a.notifyUrl).
+		Set(CUSTOMCONSTSUBJECT, param.Subject)
 
 	return a.client.TradeCreate(context.Background(), bm)
 }
@@ -120,7 +120,7 @@ func (a *ZFBClient) TradeCreate(param *ZFBPayParam) (aliRsp *alipay.TradeCreateR
 // TradeQuery 支付结果查询
 func (a *ZFBClient) TradeQuery(outTradeNo string) (*alipay.TradeQueryRsp, error) {
 	bm := make(gopay.BodyMap)
-	bm.Set("out_trade_no", outTradeNo)
+	bm.Set(CUSTOMCONSTOUTTRADENO, outTradeNo)
 	return a.client.TradeQuery(context.Background(), bm)
 }
 
@@ -133,9 +133,9 @@ type ZFBRefundParam struct {
 // TradeRefund 发起退款
 func (a *ZFBClient) TradeRefund(param *ZFBRefundParam) (*alipay.TradeRefundRsp, error) {
 	bm := make(gopay.BodyMap)
-	bm.Set("out_trade_no", param.OutTradeNo).
-		Set("refund_amount", param.RefundAmount).
-		Set("refund_reason", param.RefundReason)
+	bm.Set(CUSTOMCONSTOUTTRADENO, param.OutTradeNo).
+		Set(CUSTOMCONSTREFUNDAMOUNT, param.RefundAmount).
+		Set(CUSTOMCONSTREFUNDREASON, param.RefundReason)
 
 	return a.client.TradeRefund(context.Background(), bm)
 }
@@ -143,8 +143,8 @@ func (a *ZFBClient) TradeRefund(param *ZFBRefundParam) (*alipay.TradeRefundRsp, 
 // TradeFastPayRefundQuery 退款结果查询
 func (a *ZFBClient) TradeFastPayRefundQuery(outTradeNo, outRequestNo string) (*alipay.TradeFastPayRefundQueryRsp, error) {
 	bm := make(gopay.BodyMap)
-	bm.Set("out_trade_no", outTradeNo).
-		Set("out_request_no", outRequestNo)
+	bm.Set(CUSTOMCONSTOUTTRADENO, outTradeNo).
+		Set(CUSTOMCONSTOUTREQUESTNO, outRequestNo)
 
 	return a.client.TradeFastPayRefundQuery(context.Background(), bm)
 }
@@ -152,8 +152,8 @@ func (a *ZFBClient) TradeFastPayRefundQuery(outTradeNo, outRequestNo string) (*a
 // SystemOauthToken 获取用户code
 func (a *ZFBClient) SystemOauthToken(code string) (*alipay.SystemOauthTokenRsp, error) {
 	bodyMap := make(gopay.BodyMap)
-	body := bodyMap.Set("grant_type", "authorization_code").
-		Set("code", code)
+	body := bodyMap.Set(CUSTOMCONSTGRANTTYPE, CUSTOMCONSTAUTHORIZATIONCODE).
+		Set(CUSTOMCONSTCODE, code)
 
 	return a.client.SystemOauthToken(context.Background(), body)
 }
@@ -161,7 +161,7 @@ func (a *ZFBClient) SystemOauthToken(code string) (*alipay.SystemOauthTokenRsp, 
 // UserInfoShare 用code换取用户信息
 func (a *ZFBClient) UserInfoShare(authToken string) (*alipay.UserInfoShareRsp, error) {
 	bodyMap := make(gopay.BodyMap)
-	body := bodyMap.Set("auth_token", authToken)
+	body := bodyMap.Set(CUSTOMCONSTAUTHTOKEN, authToken)
 
 	return a.client.UserInfoShare(context.Background(), body)
 }

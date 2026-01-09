@@ -5,18 +5,16 @@ import (
 	"github.com/google/uuid"
 )
 
-const TraceIDHeader = "Trace-Id"
-
 // MiddlewareTraceID 用来确保请求拥有统一的 Trace ID。
 func MiddlewareTraceID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		traceID := uuid.NewString()
-		c.Header(TraceIDHeader, traceID)
-		c.Set(TraceIDHeader, traceID)
+		c.Header(CUSTOMCONSTTRACEIDHEADER, traceID)
+		c.Set(CUSTOMCONSTTRACEIDHEADER, traceID)
 		c.Next()
 	}
 }
 
 func GetTraceID(c *gin.Context) string {
-	return c.GetString(TraceIDHeader)
+	return c.GetString(CUSTOMCONSTTRACEIDHEADER)
 }

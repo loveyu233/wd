@@ -347,7 +347,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		c.Set(string(RequestLoggerKey), requestLogger)
 
 		c.Next()
-		if c.GetBool("skip") {
+		if c.GetBool(CUSTOMCONSTSKIP) {
 			//for _, m := range tracker.Marks() {
 			//	WriteGinInfoLog(c, m.Name, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
 			//		m.Name,
@@ -440,7 +440,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 					params["form"] = formData
 				}
 			}
-		} else if strings.Contains(contentType, "application/json") {
+		} else if strings.Contains(contentType, CUSTOMCONSTAPPLICATIONJSON) {
 			if ok, reason := shouldCaptureRequestBody(c.Request); ok {
 				if requestBody, err := io.ReadAll(c.Request.Body); err == nil {
 					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
@@ -519,8 +519,8 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"user_agent": c.Request.UserAgent(),
 			"client_ip":  c.ClientIP(),
 			"header":     headerMap,
-			"module":     c.GetString("module"),
-			"option":     c.GetString("option"),
+			"module":     c.GetString(CUSTOMCONSTMODULE),
+			"option":     c.GetString(CUSTOMCONSTOPTION),
 			"content_kv": contentKV,
 		})
 		for _, m := range tracker.Marks() {
@@ -530,7 +530,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				float64(m.SincePrev.Microseconds())/1000)
 		}
 
-		if c.GetBool("only-req") {
+		if c.GetBool(CUSTOMCONSTONLYREQ) {
 			// 输出所有收集的日志
 			requestLogger.Flush()
 			requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
@@ -542,7 +542,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		duration := Now().Sub(startTime)
 
 		bodyMap := make(map[string]any)
-		if !c.GetBool("brief") {
+		if !c.GetBool(CUSTOMCONSTBRIEF) {
 			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
 			if err != nil {
 				recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
@@ -553,7 +553,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		} else {
 			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
-			for _, ele := range c.GetStringSlice("gjsonkeys") {
+			for _, ele := range c.GetStringSlice(CUSTOMCONSTGJSONKEYS) {
 				if err != nil {
 					recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
 				} else {
@@ -569,11 +569,11 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 输出所有收集的日志
 		requestLogger.Flush()
 
-		if mc.SaveLog != nil && !c.GetBool("no_record") {
+		if mc.SaveLog != nil && !c.GetBool(CUSTOMCONSTNORECORD) {
 			mc.SaveLog(ReqLog{
 				ReqTime:     startTime,
-				Module:      c.GetString("module"),
-				Option:      c.GetString("option"),
+				Module:      c.GetString(CUSTOMCONSTMODULE),
+				Option:      c.GetString(CUSTOMCONSTOPTION),
 				Method:      c.Request.Method,
 				Path:        c.Request.URL.Path,
 				URL:         fullURL,
@@ -584,8 +584,8 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				Status:      c.Writer.Status(),
 				LatencyMs:   duration.Milliseconds(),
 				Body:        bodyMap,
-				RespStatus:  c.GetInt("resp-status"),
-				RespMessage: c.GetString("resp-msg"),
+				RespStatus:  c.GetInt(CUSTOMCONSTRESPSTATUS),
+				RespMessage: c.GetString(CUSTOMCONSTRESPMSG),
 			})
 		}
 	}
@@ -614,7 +614,7 @@ func WriteGinErrLog(c *gin.Context, key, format string, args ...any) {
 // GinLogSetModuleName 用来在上下文中标记模块名称。
 func GinLogSetModuleName(name string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("module", name)
+		c.Set(CUSTOMCONSTMODULE, name)
 		c.Next()
 	}
 }
@@ -622,9 +622,9 @@ func GinLogSetModuleName(name string) gin.HandlerFunc {
 // GinLogSetOptionName 用来记录操作名称并可选择不持久化日志。
 func GinLogSetOptionName(name string, noRecord ...bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("option", name)
+		c.Set(CUSTOMCONSTOPTION, name)
 		if len(noRecord) > 0 && noRecord[0] {
-			c.Set("no_record", true)
+			c.Set(CUSTOMCONSTNORECORD, true)
 		}
 		c.Next()
 	}
@@ -633,7 +633,7 @@ func GinLogSetOptionName(name string, noRecord ...bool) gin.HandlerFunc {
 // GinLogSetSkipLogFlag 用来标记当前请求跳过日志流程。
 func GinLogSetSkipLogFlag() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("skip", true)
+		c.Set(CUSTOMCONSTSKIP, true)
 		c.Next()
 	}
 }
@@ -641,7 +641,7 @@ func GinLogSetSkipLogFlag() gin.HandlerFunc {
 // GinLogOnlyReqMsg 用来仅记录请求阶段日志。
 func GinLogOnlyReqMsg() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("only-req", true)
+		c.Set(CUSTOMCONSTONLYREQ, true)
 		c.Next()
 	}
 }
@@ -657,8 +657,8 @@ func GinLogOnlyReqMsg() gin.HandlerFunc {
 //	}
 func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("brief", true)
-		c.Set("gjsonkeys", gjsonKeys)
+		c.Set(CUSTOMCONSTBRIEF, true)
+		c.Set(CUSTOMCONSTGJSONKEYS, gjsonKeys)
 		c.Next()
 	}
 }

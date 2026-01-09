@@ -405,7 +405,7 @@ func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 		return
 	}
 
-	c.Set("JWT_PAYLOAD", claims)
+	c.Set(CUSTOMCONSTJWTPAYLOAD, claims)
 	identity := mw.IdentityHandler(c)
 
 	if identity != nil {
@@ -428,7 +428,7 @@ func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) 
 	}
 
 	if mw.SendAuthorization {
-		if v, ok := c.Get("JWT_TOKEN"); ok {
+		if v, ok := c.Get(CUSTOMCONSTJWTTOKEN); ok {
 			c.Header("Authorization", mw.TokenHeadName+" "+v.(string))
 		}
 	}
@@ -725,7 +725,7 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 		}
 
 		// 如果有效，保存令牌字符串
-		c.Set("JWT_TOKEN", token)
+		c.Set(CUSTOMCONSTJWTTOKEN, token)
 
 		return mw.Key, nil
 	}, mw.ParseOptions...)
@@ -761,7 +761,7 @@ func (mw *GinJWTMiddleware) unauthorized(c *gin.Context, code int, message strin
 
 // ExtractClaims 用来从 gin.Context 中取出 JWT Claims。
 func ExtractClaims(c *gin.Context) MapClaims {
-	claims, exists := c.Get("JWT_PAYLOAD")
+	claims, exists := c.Get(CUSTOMCONSTJWTPAYLOAD)
 	if !exists {
 		return make(MapClaims)
 	}
@@ -785,7 +785,7 @@ func ExtractClaimsFromToken(token *jwt.Token) MapClaims {
 
 // GetToken 用来从上下文获取解析过的 token 字符串。
 func GetToken(c *gin.Context) string {
-	token, exists := c.Get("JWT_TOKEN")
+	token, exists := c.Get(CUSTOMCONSTJWTTOKEN)
 	if !exists {
 		return ""
 	}
