@@ -103,24 +103,26 @@ func (rl *RequestLogger) Flush() {
 	// 添加所有收集的日志条目
 	var latencyMsInfoArr []string
 	for _, entry := range rl.entries {
-		if entry.Key == "resp_info" || entry.Key == "req_info" {
+		if entry.Key == CUSTOMCONSTRESPINFO || entry.Key == CUSTOMCONSTREQINFO {
 			event = event.Any(entry.Key, entry.Fields)
-		} else if entry.Key == "latency_ms_info" {
+		} else if entry.Key == CUSTOMCONSTLATENCYMSINFO {
 			latencyMsInfoArr = append(latencyMsInfoArr, entry.Message)
+		} else if entry.Key == CUSTOMCONSTTRACEIDHEADER {
+			event = event.Any("trace_id", entry.Fields[CUSTOMCONSTTRACEIDHEADER])
 		} else {
 			event = event.Any(entry.Key, entry)
 		}
 	}
 	if len(latencyMsInfoArr) > 0 {
-		event = event.Strs("latency_ms_info", latencyMsInfoArr)
+		event = event.Strs(CUSTOMCONSTLATENCYMSINFO, latencyMsInfoArr)
 	}
 
 	if len(rl.sqlEntries) > 0 {
 		event = event.Any("sql", rl.sqlEntries)
 	}
 
-	event = event.Int64("duration_ms", rl.durationMs)
-	event = event.Int("status_code", rl.statusCode)
+	event = event.Int64(CUSTOMCONSTDURATIONMS, rl.durationMs)
+	event = event.Int(CUSTOMCONSTSTATUSCODE, rl.statusCode)
 	event.Msg("")
 }
 
@@ -359,7 +361,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-
+		requestLogger.AddEntry(CUSTOMCONSTTRACEIDHEADER, zerolog.InfoLevel, "response", map[string]any{CUSTOMCONSTTRACEIDHEADER: GetTraceID(c)})
 		// 获取请求参数，分类存储
 		params := make(map[string]any)
 
@@ -453,7 +455,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 						}
 					}
 				} else {
-					recordBodySkip(params, fmt.Sprintf("failed to read request body: %v", err))
+					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
 				}
 			} else {
 				recordBodySkip(params, reason)
@@ -466,7 +468,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 						params["xml"] = string(requestBody)
 					}
 				} else {
-					recordBodySkip(params, fmt.Sprintf("failed to read request body: %v", err))
+					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
 				}
 			} else {
 				recordBodySkip(params, reason)
@@ -483,7 +485,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 						}
 					}
 				} else {
-					recordBodySkip(params, fmt.Sprintf("failed to read request body: %v", err))
+					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
 				}
 			} else {
 				recordBodySkip(params, reason)
@@ -510,7 +512,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 		// 记录请求开始信息
-		requestLogger.AddEntry("req_info", zerolog.InfoLevel, "request", map[string]any{
+		requestLogger.AddEntry(CUSTOMCONSTREQINFO, zerolog.InfoLevel, "request", map[string]any{
 			"req_time":   startTime.Format(CSTLayout),
 			"method":     c.Request.Method,
 			"path":       c.Request.URL.Path,
@@ -562,7 +564,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 
-		requestLogger.AddEntry("resp_info", zerolog.InfoLevel, "response", bodyMap)
+		requestLogger.AddEntry(CUSTOMCONSTRESPINFO, zerolog.InfoLevel, "response", bodyMap)
 		requestLogger.SetDurationMs(duration.Milliseconds())
 		requestLogger.SetStatusCode(c.Writer.Status())
 
@@ -666,7 +668,7 @@ func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
 // shouldCaptureRequestBody 用来判断请求体是否可被记录并给出原因。
 func shouldCaptureRequestBody(r *http.Request) (bool, string) {
 	if r == nil {
-		return false, "request is nil"
+		return false, "请求为零"
 	}
 	if r.Body == nil || r.Body == http.NoBody {
 		return false, "无请求数据"
@@ -714,7 +716,7 @@ func (t *Tracker) Mark(name string) {
 
 	now := time.Now()
 	t.marks = append(t.marks, Mark{
-		key:        "latency_ms_info",
+		key:        CUSTOMCONSTLATENCYMSINFO,
 		Name:       name,
 		SinceStart: now.Sub(t.start),
 		SincePrev:  now.Sub(t.last),
