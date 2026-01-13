@@ -83,6 +83,31 @@ var (
 	// ... 可以继续添加其他预定义错误
 )
 
+func RespCodeDescMap() map[int]string {
+	return map[int]string{
+		100000: "请求外部服务失败",
+		100001: "请求wechat服务失败",
+		100002: "请求wechat支付服务失败",
+		100003: "请求zfb服务失败",
+		100004: "请求zfb支付服务失败",
+		400000: "请求错误",
+		400001: "请求参数错误",
+		400002: "token验证失败",
+		400003: "token生成失败",
+		401000: "用户未登录或token已失效",
+		403000: "权限不足",
+		403001: "用户不存在或已被禁用",
+		404000: "数据不存在",
+		409000: "数据已存在",
+		409001: "索引冲突",
+		500000: "服务器繁忙",
+		500001: "数据库错误",
+		500002: "redis错误",
+		600000: "加密错误",
+		999999: "其他错误",
+	}
+}
+
 func MsgErrRequestExternalService(msg string, args ...any) *AppError {
 	return ErrRequestExternalService.WithMessage(msg, args...)
 }
