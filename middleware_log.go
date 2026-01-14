@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -348,6 +347,13 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		requestLogger := NewRequestLogger(c.Request.Context(), zlog)
 		c.Set(string(RequestLoggerKey), requestLogger)
 
+		// 在 c.Next() 之前读取并缓存请求体，避免后续读取时 body 已关闭
+		var cachedRequestBody []byte
+		if c.Request.Body != nil && c.Request.Body != http.NoBody && c.Request.ContentLength > 0 {
+			cachedRequestBody, _ = io.ReadAll(c.Request.Body)
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(cachedRequestBody))
+		}
+
 		c.Next()
 		if c.GetBool(CUSTOMCONSTSKIP) {
 			//for _, m := range tracker.Marks() {
@@ -390,9 +396,10 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 3. 获取请求体和处理不同类型的参数
 		contentType := c.ContentType()
 
-		if strings.Contains(contentType, "multipart/form-data") {
+		switch contentType {
+		case "multipart/form-data":
 			// 处理 multipart/form-data（包含文件上传）
-			err := c.Request.ParseMultipartForm(32 << 20) // 32MB 最大内存
+			err := c.Request.ParseMultipartForm(10 << 20) // 10MB 最大内存
 			if err == nil && c.Request.MultipartForm != nil {
 				// 处理普通表单字段
 				formData := make(map[string]any)
@@ -426,7 +433,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 					params["files"] = fileParams
 				}
 			}
-		} else if strings.Contains(contentType, "application/x-www-form-urlencoded") {
+		case "application/x-www-form-urlencoded":
 			// 处理表单编码数据
 			err := c.Request.ParseForm()
 			if err == nil {
@@ -442,53 +449,26 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 					params["form"] = formData
 				}
 			}
-		} else if strings.Contains(contentType, CUSTOMCONSTAPPLICATIONJSON) {
-			if ok, reason := shouldCaptureRequestBody(c.Request); ok {
-				if requestBody, err := io.ReadAll(c.Request.Body); err == nil {
-					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-					if len(requestBody) > 0 {
-						var bodyParams any
-						if err := json.Unmarshal(requestBody, &bodyParams); err == nil {
-							params["json"] = bodyParams
-						} else {
-							params["json_raw"] = string(requestBody)
-						}
-					}
+		case "application/json":
+			if len(cachedRequestBody) > 0 {
+				var bodyParams any
+				if err := json.Unmarshal(cachedRequestBody, &bodyParams); err == nil {
+					params["json"] = bodyParams
 				} else {
-					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
+					params["json_raw"] = string(cachedRequestBody)
 				}
-			} else {
-				recordBodySkip(params, reason)
 			}
-		} else if strings.Contains(contentType, "application/xml") || strings.Contains(contentType, "text/xml") {
-			if ok, reason := shouldCaptureRequestBody(c.Request); ok {
-				if requestBody, err := io.ReadAll(c.Request.Body); err == nil {
-					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-					if len(requestBody) > 0 {
-						params["xml"] = string(requestBody)
-					}
-				} else {
-					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
-				}
-			} else {
-				recordBodySkip(params, reason)
+		case "application/xml", "text/xml":
+			if len(cachedRequestBody) > 0 {
+				params["xml"] = string(cachedRequestBody)
 			}
-		} else {
-			if ok, reason := shouldCaptureRequestBody(c.Request); ok {
-				if requestBody, err := io.ReadAll(c.Request.Body); err == nil {
-					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-					if len(requestBody) > 0 {
-						params["raw"] = map[string]any{
-							"content_type": contentType,
-							"body":         string(requestBody),
-							"size":         len(requestBody),
-						}
-					}
-				} else {
-					recordBodySkip(params, fmt.Sprintf("读取请求正文失败: %v", err))
+		default:
+			if len(cachedRequestBody) > 0 {
+				params["raw"] = map[string]any{
+					"content_type": contentType,
+					"body":         string(cachedRequestBody),
+					"size":         len(cachedRequestBody),
 				}
-			} else {
-				recordBodySkip(params, reason)
 			}
 		}
 
