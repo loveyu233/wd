@@ -85,6 +85,7 @@ var (
 
 func RespCodeDescMap() map[int]string {
 	return map[int]string{
+		200:    "请求成功",
 		100000: "请求外部服务失败",
 		100001: "请求wechat服务失败",
 		100002: "请求wechat支付服务失败",
