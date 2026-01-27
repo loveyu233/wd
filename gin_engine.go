@@ -46,6 +46,7 @@ type RouterConfig struct {
 	skipGinJWTMiddleware bool
 	logWriter            io.Writer
 	contentKeys          []string
+	engineFunc           func(engine *gin.Engine)
 }
 
 type GinModel string
@@ -67,6 +68,12 @@ type GinRouterConfigOptionFunc func(*RouterConfig)
 func WithGinSkipLog(skipLog bool) GinRouterConfigOptionFunc {
 	return func(config *RouterConfig) {
 		config.skipLog = skipLog
+	}
+}
+
+func WithGinEngineFunc(fun func(engine *gin.Engine)) GinRouterConfigOptionFunc {
+	return func(config *RouterConfig) {
+		config.engineFunc = fun
 	}
 }
 

@@ -37,6 +37,9 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOptionFunc
 		Addr:    listenAddr,
 		Handler: engine,
 	}}
+	if config.engineFunc != nil {
+		config.engineFunc(engine)
+	}
 	if config.readTimeout > 0 {
 		server.server.ReadTimeout = config.readTimeout
 	}

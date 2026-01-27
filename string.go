@@ -250,3 +250,45 @@ func MaskIDCard(idCard string) string {
 func MaskUsername(username string) string {
 	return GetFirstNChars(username, 1) + "*"
 }
+
+// ReplacePathParamsFast 处理路径参数替换为*
+func ReplacePathParamsFast(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	var result strings.Builder
+	result.Grow(len(path)) // 预分配空间，提高性能
+
+	inParam := false
+
+	for i := 0; i < len(path); i++ {
+		ch := path[i]
+
+		if ch == ':' {
+			// 检查是否是路径参数开头
+			if i == 0 || path[i-1] == '/' {
+				result.WriteByte('*')
+				inParam = true
+				// 跳过参数名部分
+				for i < len(path) && path[i] != '/' {
+					i++
+				}
+				if i < len(path) {
+					result.WriteByte(path[i])
+				}
+				continue
+			}
+		}
+
+		if !inParam {
+			result.WriteByte(ch)
+		}
+
+		if ch == '/' {
+			inParam = false
+		}
+	}
+
+	return result.String()
+}
