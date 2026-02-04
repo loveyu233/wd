@@ -5,31 +5,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
-// GetLastNChars 用来返回字符串结尾的 n 个字符。
-func GetLastNChars(str string, n int) string {
+// GetPositionChars n为正数则从前开始 负数则从后开始
+func GetPositionChars(str string, n int) string {
 	runes := []rune(str)
 	length := len(runes)
 
 	if n <= 0 {
-		return ""
-	}
-
-	if n >= length {
-		return str
-	}
-
-	return string(runes[length-n:])
-}
-
-// GetFirstNChars 用来返回字符串开头的 n 个字符。
-func GetFirstNChars(str string, n int) string {
-	runes := []rune(str)
-	length := len(runes)
-
-	if n <= 0 {
-		return ""
+		n += length
+		if n >= length || n < 0 {
+			return str
+		}
+		return string(runes[n:])
 	}
 
 	if n >= length {
@@ -247,8 +236,15 @@ func MaskIDCard(idCard string) string {
 }
 
 // MaskUsername 用来只保留用户名第一个字符并遮蔽剩余部分。
-func MaskUsername(username string) string {
-	return GetFirstNChars(username, 1) + "*"
+func MaskUsername(username string, maskLastName ...bool) string {
+	if utf8.RuneCountInString(username) <= 2 {
+		if len(maskLastName) > 0 && maskLastName[0] {
+			return fmt.Sprintf("*%s", GetPositionChars(username, -1))
+		}
+		return fmt.Sprintf("%s*", GetPositionChars(username, 1))
+	}
+
+	return fmt.Sprintf("%s*%s", GetPositionChars(username, 1), GetPositionChars(username, -1))
 }
 
 // ReplacePathParamsFast 处理路径参数替换为*
