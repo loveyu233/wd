@@ -64,8 +64,8 @@ func ConvertStringToUint32Simple(str string) uint32 {
 	return result
 }
 
-// GetGenderFormIDCard 用来根据身份证号码推断性别。
-func GetGenderFormIDCard(idcard string) string {
+// GetGenderFromIDCard 用来根据身份证号码推断性别。
+func GetGenderFromIDCard(idcard string) string {
 	if !ValidateChineseIDCard(idcard) {
 		return "未知"
 	}
