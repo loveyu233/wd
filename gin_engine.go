@@ -62,111 +62,111 @@ var (
 	GinModelTest    GinModel = "test"
 )
 
-type GinRouterConfigOptionFunc func(*RouterConfig)
+type GinRouterConfigOption func(*RouterConfig)
 
 // WithGinSkipLog 用来控制是否跳过访问日志中间件。
-func WithGinSkipLog(skipLog bool) GinRouterConfigOptionFunc {
+func WithGinSkipLog(skipLog bool) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.skipLog = skipLog
 	}
 }
 
-func WithGinEngineFunc(fun func(engine *gin.Engine)) GinRouterConfigOptionFunc {
+func WithGinEngineFunc(fun func(engine *gin.Engine)) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.engineFunc = fun
 	}
 }
 
-func WithLogWriter(w io.Writer) GinRouterConfigOptionFunc {
+func WithLogWriter(w io.Writer) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.logWriter = w
 	}
 }
-func WithLogContentKeys(keys []string) GinRouterConfigOptionFunc {
+func WithLogContentKeys(keys []string) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.contentKeys = keys
 	}
 }
 
 // WithSkipGinJWTMiddleware 如果设置了true，会在默认的认证中间件跳过，如果在初始化配置了添加则不会跳过
-func WithSkipGinJWTMiddleware(skipGinJWTMiddleware bool) GinRouterConfigOptionFunc {
+func WithSkipGinJWTMiddleware(skipGinJWTMiddleware bool) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.skipGinJWTMiddleware = skipGinJWTMiddleware
 	}
 }
 
 // WithGinReadTimeout 用来设置 HTTP 服务器的读取超时。
-func WithGinReadTimeout(d time.Duration) GinRouterConfigOptionFunc {
+func WithGinReadTimeout(d time.Duration) GinRouterConfigOption {
 	return func(routerConfig *RouterConfig) {
 		routerConfig.readTimeout = d
 	}
 }
 
 // WithGinWriteTimeout 用来设置 HTTP 响应写入超时。
-func WithGinWriteTimeout(d time.Duration) GinRouterConfigOptionFunc {
+func WithGinWriteTimeout(d time.Duration) GinRouterConfigOption {
 	return func(routerConfig *RouterConfig) {
 		routerConfig.writeTimeout = d
 	}
 }
 
 // WithGinIdleTimeout 用来设置连接空闲超时时间。
-func WithGinIdleTimeout(d time.Duration) GinRouterConfigOptionFunc {
+func WithGinIdleTimeout(d time.Duration) GinRouterConfigOption {
 	return func(routerConfig *RouterConfig) {
 		routerConfig.idleTimeout = d
 	}
 }
 
 // WithGinMaxHeaderBytes 用来限制请求头允许的最大字节数。
-func WithGinMaxHeaderBytes(d int) GinRouterConfigOptionFunc {
+func WithGinMaxHeaderBytes(d int) GinRouterConfigOption {
 	return func(routerConfig *RouterConfig) {
 		routerConfig.maxHeaderBytes = d
 	}
 }
 
 // WithGinRouterModel 用来指定 gin 运行模式。
-func WithGinRouterModel(model GinModel) GinRouterConfigOptionFunc {
+func WithGinRouterModel(model GinModel) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.model = model
 	}
 }
 
 // WithGinRouterOutputHealthzLog 用来允许 healthz 请求输出日志。
-func WithGinRouterOutputHealthzLog() GinRouterConfigOptionFunc {
+func WithGinRouterOutputHealthzLog() GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.outputHealthz = true
 	}
 }
 
 // WithGinRouterPrefix 用来设置 API 前缀。
-func WithGinRouterPrefix(prefix string) GinRouterConfigOptionFunc {
+func WithGinRouterPrefix(prefix string) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.prefix = prefix
 	}
 }
 
 // WithGinRouterAuthHandler 用来配置需要鉴权的中间件。
-func WithGinRouterAuthHandler(handlers ...gin.HandlerFunc) GinRouterConfigOptionFunc {
+func WithGinRouterAuthHandler(handlers ...gin.HandlerFunc) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.authMiddleware = handlers
 	}
 }
 
 // WithGinRouterGlobalMiddleware 用来注册全局中间件链。
-func WithGinRouterGlobalMiddleware(handlers ...gin.HandlerFunc) GinRouterConfigOptionFunc {
+func WithGinRouterGlobalMiddleware(handlers ...gin.HandlerFunc) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.globalMiddleware = handlers
 	}
 }
 
 // WithGinRouterLogRecordHeaderKeys 用来指定需要记录的请求头。
-func WithGinRouterLogRecordHeaderKeys(keys []string) GinRouterConfigOptionFunc {
+func WithGinRouterLogRecordHeaderKeys(keys []string) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.recordHeaderKeys = keys
 	}
 }
 
 // WithGinRouterLogSaveLog 用来注入持久化请求日志的回调。
-func WithGinRouterLogSaveLog(f func(ReqLog)) GinRouterConfigOptionFunc {
+func WithGinRouterLogSaveLog(f func(ReqLog)) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.saveLog = f
 	}

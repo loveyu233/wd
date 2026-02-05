@@ -17,7 +17,7 @@ type WXOfficial struct {
 	IsSaveHandlerLog bool
 }
 
-type WXOfficialImp interface {
+type WXOfficialHandler interface {
 	Subscribe(rs *response.ResponseGetUserInfo, event contract.EventInterface) error
 	UnSubscribe(rs *response.ResponseGetUserInfo, event contract.EventInterface) error
 	PushHandler(c *gin.Context) (toUsers []string, message string)
@@ -36,8 +36,8 @@ type OfficialAccount struct {
 }
 
 type OfficialAccountAppServiceConfig struct {
-	OfficialAccount OfficialAccount
-	WXOfficialImp   WXOfficialImp
+	OfficialAccount   OfficialAccount
+	WXOfficialHandler WXOfficialHandler
 }
 
 var (
@@ -59,9 +59,9 @@ func InitWXOfficialAccountAppService(conf OfficialAccountAppServiceConfig) error
 	}
 	InsWXOfficial = &WXOfficial{
 		OfficialAccountApp: app,
-		subscribe:          conf.WXOfficialImp.Subscribe,
-		unSubscribe:        conf.WXOfficialImp.UnSubscribe,
-		pushHandler:        conf.WXOfficialImp.PushHandler,
+		subscribe:          conf.WXOfficialHandler.Subscribe,
+		unSubscribe:        conf.WXOfficialHandler.UnSubscribe,
+		pushHandler:        conf.WXOfficialHandler.PushHandler,
 		IsSaveHandlerLog:   conf.OfficialAccount.IsSaveHandlerLog,
 	}
 	return nil

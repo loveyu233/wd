@@ -28,8 +28,8 @@ type MiniProgram struct {
 	Log               miniProgram.Log       `json:"log"`
 }
 
-// WXMiniImp 定义用户相关操作接口
-type WXMiniImp interface {
+// WXMiniHandler 定义用户相关操作接口
+type WXMiniHandler interface {
 	// IsExistsUser 检查用户是否存在
 	IsExistsUser(unionID string) (user any, exists bool, err error)
 
@@ -66,8 +66,8 @@ type MiniProgramConfig struct {
 
 // MiniProgramServiceConfig 小程序服务配置
 type MiniProgramServiceConfig struct {
-	MiniProgram MiniProgramConfig
-	WXMiniImp   WXMiniImp
+	MiniProgram   MiniProgramConfig
+	WXMiniHandler WXMiniHandler
 }
 
 func InitWXMiniProgramService(config MiniProgramServiceConfig) (*WXMini, error) {
@@ -91,9 +91,9 @@ func InitWXMiniProgramService(config MiniProgramServiceConfig) (*WXMini, error) 
 
 	return &WXMini{
 		MiniProgramApp:   app,
-		isExistsUser:     config.WXMiniImp.IsExistsUser,
-		createUser:       config.WXMiniImp.CreateUser,
-		generateToken:    config.WXMiniImp.GenerateToken,
+		isExistsUser:     config.WXMiniHandler.IsExistsUser,
+		createUser:       config.WXMiniHandler.CreateUser,
+		generateToken:    config.WXMiniHandler.GenerateToken,
 		IsSaveHandlerLog: config.MiniProgram.IsSaveHandlerLog,
 	}, nil
 }

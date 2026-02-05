@@ -103,26 +103,26 @@ func (rl *RequestLogger) Flush() {
 	var latencyMsInfoArr []string
 	for _, entry := range rl.entries {
 		switch entry.Key {
-		case CUSTOMCONSTRESPINFO, CUSTOMCONSTREQINFO:
+		case CtxKeyRespInfo, CtxKeyReqInfo:
 			event = event.Any(entry.Key, entry.Fields)
-		case CUSTOMCONSTLATENCYMSINFO:
+		case CtxKeyLatencyMsInfo:
 			latencyMsInfoArr = append(latencyMsInfoArr, entry.Message)
-		case CUSTOMCONSTTRACEIDHEADER:
-			event = event.Any("trace_id", entry.Fields[CUSTOMCONSTTRACEIDHEADER])
+		case HeaderTraceID:
+			event = event.Any("trace_id", entry.Fields[HeaderTraceID])
 		default:
 			event = event.Any(entry.Key, entry)
 		}
 	}
 	if len(latencyMsInfoArr) > 0 {
-		event = event.Strs(CUSTOMCONSTLATENCYMSINFO, latencyMsInfoArr)
+		event = event.Strs(CtxKeyLatencyMsInfo, latencyMsInfoArr)
 	}
 
 	if len(rl.sqlEntries) > 0 {
 		event = event.Any("sql", rl.sqlEntries)
 	}
 
-	event = event.Int64(CUSTOMCONSTDURATIONMS, rl.durationMs)
-	event = event.Int(CUSTOMCONSTSTATUSCODE, rl.statusCode)
+	event = event.Int64(CtxKeyDurationMs, rl.durationMs)
+	event = event.Int(CtxKeyStatusCode, rl.statusCode)
 	event.Msg("")
 }
 
@@ -356,10 +356,10 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		}
 
 		c.Next()
-		if c.GetBool(CUSTOMCONSTSKIP) {
+		if c.GetBool(CtxKeySkip) {
 			return
 		}
-		requestLogger.AddEntry(CUSTOMCONSTTRACEIDHEADER, zerolog.InfoLevel, "response", map[string]any{CUSTOMCONSTTRACEIDHEADER: GetTraceID(c)})
+		requestLogger.AddEntry(HeaderTraceID, zerolog.InfoLevel, "response", map[string]any{HeaderTraceID: GetTraceID(c)})
 		// 获取请求参数，分类存储
 		params := make(map[string]any)
 
@@ -484,7 +484,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			}
 		}
 		// 记录请求开始信息
-		requestLogger.AddEntry(CUSTOMCONSTREQINFO, zerolog.InfoLevel, "request", map[string]any{
+		requestLogger.AddEntry(CtxKeyReqInfo, zerolog.InfoLevel, "request", map[string]any{
 			"req_time":   startTime.Format(CSTLayout),
 			"method":     c.Request.Method,
 			"path":       c.Request.URL.Path,
@@ -493,8 +493,8 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"user_agent": c.Request.UserAgent(),
 			"client_ip":  c.ClientIP(),
 			"header":     headerMap,
-			"module":     c.GetString(CUSTOMCONSTMODULE),
-			"option":     c.GetString(CUSTOMCONSTOPTION),
+			"module":     c.GetString(CtxKeyModule),
+			"option":     c.GetString(CtxKeyOption),
 			"content_kv": contentKV,
 		})
 		for _, m := range tracker.Marks() {
@@ -504,7 +504,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				float64(m.SincePrev.Microseconds())/1000)
 		}
 
-		if c.GetBool(CUSTOMCONSTONLYREQ) {
+		if c.GetBool(CtxKeyOnlyReq) {
 			requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
 			requestLogger.SetStatusCode(c.Writer.Status())
 			// 输出所有收集的日志
@@ -517,32 +517,32 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 读取响应体（只读取一次）
 		respBody := bodyBuffer.Bytes()
 		bodyMap := make(map[string]any)
-		if !c.GetBool(CUSTOMCONSTBRIEF) {
+		if !c.GetBool(CtxKeyBrief) {
 			if len(respBody) > 0 {
 				if err := json.Unmarshal(respBody, &bodyMap); err != nil {
 					recordBodySkip(params, fmt.Sprintf("解析响应体失败: %v", err))
 				}
 			}
 		} else {
-			for _, ele := range c.GetStringSlice(CUSTOMCONSTGJSONKEYS) {
+			for _, ele := range c.GetStringSlice(CtxKeyGjsonKeys) {
 				if len(respBody) > 0 {
 					bodyMap[ele] = gjson.GetBytes(respBody, ele).Value()
 				}
 			}
 		}
 
-		requestLogger.AddEntry(CUSTOMCONSTRESPINFO, zerolog.InfoLevel, "response", bodyMap)
+		requestLogger.AddEntry(CtxKeyRespInfo, zerolog.InfoLevel, "response", bodyMap)
 		requestLogger.SetDurationMs(duration.Milliseconds())
 		requestLogger.SetStatusCode(c.Writer.Status())
 
 		// 输出所有收集的日志
 		requestLogger.Flush()
 
-		if mc.SaveLog != nil && !c.GetBool(CUSTOMCONSTNORECORD) {
+		if mc.SaveLog != nil && !c.GetBool(CtxKeyNoRecord) {
 			mc.SaveLog(ReqLog{
 				ReqTime:     startTime,
-				Module:      c.GetString(CUSTOMCONSTMODULE),
-				Option:      c.GetString(CUSTOMCONSTOPTION),
+				Module:      c.GetString(CtxKeyModule),
+				Option:      c.GetString(CtxKeyOption),
 				Method:      c.Request.Method,
 				Path:        c.Request.URL.Path,
 				URL:         fullURL,
@@ -553,8 +553,8 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				Status:      c.Writer.Status(),
 				LatencyMs:   duration.Milliseconds(),
 				Body:        bodyMap,
-				RespStatus:  c.GetInt(CUSTOMCONSTRESPSTATUS),
-				RespMessage: c.GetString(CUSTOMCONSTRESPMSG),
+				RespStatus:  c.GetInt(CtxKeyRespStatus),
+				RespMessage: c.GetString(CtxKeyRespMsg),
 			})
 		}
 	}
@@ -583,7 +583,7 @@ func WriteGinErrLog(c *gin.Context, key, format string, args ...any) {
 // GinLogSetModuleName 用来在上下文中标记模块名称。
 func GinLogSetModuleName(name string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(CUSTOMCONSTMODULE, name)
+		c.Set(CtxKeyModule, name)
 		c.Next()
 	}
 }
@@ -591,9 +591,9 @@ func GinLogSetModuleName(name string) gin.HandlerFunc {
 // GinLogSetOptionName 用来记录操作名称并可选择不持久化日志。
 func GinLogSetOptionName(name string, noRecord ...bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(CUSTOMCONSTOPTION, name)
+		c.Set(CtxKeyOption, name)
 		if len(noRecord) > 0 && noRecord[0] {
-			c.Set(CUSTOMCONSTNORECORD, true)
+			c.Set(CtxKeyNoRecord, true)
 		}
 		c.Next()
 	}
@@ -602,7 +602,7 @@ func GinLogSetOptionName(name string, noRecord ...bool) gin.HandlerFunc {
 // GinLogSetSkipLogFlag 用来标记当前请求跳过日志流程。
 func GinLogSetSkipLogFlag() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(CUSTOMCONSTSKIP, true)
+		c.Set(CtxKeySkip, true)
 		c.Next()
 	}
 }
@@ -610,7 +610,7 @@ func GinLogSetSkipLogFlag() gin.HandlerFunc {
 // GinLogOnlyReqMsg 用来仅记录请求阶段日志。
 func GinLogOnlyReqMsg() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(CUSTOMCONSTONLYREQ, true)
+		c.Set(CtxKeyOnlyReq, true)
 		c.Next()
 	}
 }
@@ -626,8 +626,8 @@ func GinLogOnlyReqMsg() gin.HandlerFunc {
 //	}
 func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(CUSTOMCONSTBRIEF, true)
-		c.Set(CUSTOMCONSTGJSONKEYS, gjsonKeys)
+		c.Set(CtxKeyBrief, true)
+		c.Set(CtxKeyGjsonKeys, gjsonKeys)
 		c.Next()
 	}
 }
@@ -667,7 +667,7 @@ func (t *Tracker) Mark(name string) {
 
 	now := Now()
 	t.marks = append(t.marks, Mark{
-		key:        CUSTOMCONSTLATENCYMSINFO,
+		key:        CtxKeyLatencyMsInfo,
 		Name:       name,
 		SinceStart: now.Sub(t.start),
 		SincePrev:  now.Sub(t.last),

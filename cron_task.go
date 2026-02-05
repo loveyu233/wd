@@ -149,45 +149,45 @@ func (cron *CronConfig) RunJobCrontabTheOne(id any, crontab string, withSeconds 
 	return nil, nil
 }
 
-type CronOptionFunc func(*CronConfig)
+type CronOption func(*CronConfig)
 
 // WithLocation 用来指定调度器使用的时区。
-func WithLocation(loc *time.Location) CronOptionFunc {
+func WithLocation(loc *time.Location) CronOption {
 	return func(c *CronConfig) {
 		c.location = loc
 	}
 }
 
 // WithBeforeJobRuns 用来设置任务执行前的回调。
-func WithBeforeJobRuns(beforeJobRuns func(jobID uuid.UUID, jobName string)) CronOptionFunc {
+func WithBeforeJobRuns(beforeJobRuns func(jobID uuid.UUID, jobName string)) CronOption {
 	return func(c *CronConfig) {
 		c.beforeJobRuns = beforeJobRuns
 	}
 }
 
 // WithAfterJobRuns 用来设置任务执行后的回调。
-func WithAfterJobRuns(afterJobRuns func(jobID uuid.UUID, jobName string)) CronOptionFunc {
+func WithAfterJobRuns(afterJobRuns func(jobID uuid.UUID, jobName string)) CronOption {
 	return func(c *CronConfig) {
 		c.afterJobRuns = afterJobRuns
 	}
 }
 
 // WithAfterJobRunsWithError 用来设置任务出错时的回调。
-func WithAfterJobRunsWithError(afterJobRunsWithError func(jobID uuid.UUID, jobName string, err error)) CronOptionFunc {
+func WithAfterJobRunsWithError(afterJobRunsWithError func(jobID uuid.UUID, jobName string, err error)) CronOption {
 	return func(c *CronConfig) {
 		c.afterJobRunsWithError = afterJobRunsWithError
 	}
 }
 
 // WithCronJobs 用来追加自定义的调度器选项。
-func WithCronJobs(options ...gocron.SchedulerOption) CronOptionFunc {
+func WithCronJobs(options ...gocron.SchedulerOption) CronOption {
 	return func(c *CronConfig) {
 		c.options = append(c.options, options...)
 	}
 }
 
 // InitCronJob 用来初始化 gocron 调度器并保存全局实例。
-func InitCronJob(options ...CronOptionFunc) error {
+func InitCronJob(options ...CronOption) error {
 	var cron = &CronConfig{
 		options: make([]gocron.SchedulerOption, 0),
 	}

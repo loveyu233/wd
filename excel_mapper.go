@@ -215,7 +215,7 @@ func (m *ExcelMapper) getStructInfo(elemType reflect.Type) (*structInfo, error) 
 
 	for i := 0; i < elemType.NumField(); i++ {
 		field := elemType.Field(i)
-		tag := field.Tag.Get(CUSTOMCONSTEXCELTAG)
+		tag := field.Tag.Get(TagExcel)
 		if tag == "" || tag == "-" {
 			continue
 		}

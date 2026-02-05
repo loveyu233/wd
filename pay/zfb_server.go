@@ -19,8 +19,8 @@ import (
 	"github.com/spf13/cast"
 )
 
-// ZfbMiniImp 定义用户相关操作接口
-type ZfbMiniImp interface {
+// ZfbMiniHandler 定义用户相关操作接口
+type ZfbMiniHandler interface {
 	// IsExistsUser 检查用户是否存在
 	IsExistsUser(unionID string) (user any, exists bool, err error)
 
@@ -51,7 +51,7 @@ type ZFBClient struct {
 	aliRootKey    []byte // 阿里根证书
 	client        *alipay.ClientV3
 	notifyUrl     string
-	zfbMiniImp    ZfbMiniImp
+	zfbMiniImp    ZfbMiniHandler
 	// 是否保存请求日志
 	IsSaveHandlerLog bool
 }
@@ -59,7 +59,7 @@ type ZFBClient struct {
 var InsZFB = new(ZFBClient)
 
 // InitAliClient 其中appid,appPrivateKey,aesKey是内容本身,appPublicKey, aliPublicKey, aliRootKey是证书路径,notifyUrl为支付成功和退款异步通知地址,isSaveHandlerLog 是否保存请求日志
-func InitAliClient(appid, appPrivateKey, aesKey, appPublicKeyFilePath, aliPublicKeyFilePath, aliRootKeyFilePath, notifyUrl string, isSaveHandlerLog bool, zfbMiniImp ZfbMiniImp) error {
+func InitAliClient(appid, appPrivateKey, aesKey, appPublicKeyFilePath, aliPublicKeyFilePath, aliRootKeyFilePath, notifyUrl string, isSaveHandlerLog bool, zfbMiniImp ZfbMiniHandler) error {
 	appPublicKey, err := wd.ReadFileContent(appPublicKeyFilePath)
 	if err != nil {
 		return err

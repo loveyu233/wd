@@ -17,7 +17,7 @@ func Cors() gin.HandlerFunc {
 	)
 
 	return func(c *gin.Context) {
-		origin := c.GetHeader(CUSTOMCONSTORIGINHEADER)
+		origin := c.GetHeader(HeaderOrigin)
 		if origin != "" {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Vary", "Origin")

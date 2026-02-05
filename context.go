@@ -16,6 +16,6 @@ func Context(ttl ...int64) (context.Context, context.CancelFunc) {
 }
 
 // DurationSecond 用来把秒值转换为 time.Duration。
-func DurationSecond(Second int) time.Duration {
-	return time.Duration(Second) * time.Second
+func DurationSecond(second int) time.Duration {
+	return time.Duration(second) * time.Second
 }

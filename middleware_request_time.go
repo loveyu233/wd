@@ -10,7 +10,7 @@ import (
 func MiddlewareRequestTime() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		startTime := Now()
-		c.Set(CUSTOMCONSTREQUESTTIME, startTime)
+		c.Set(CtxKeyRequestTime, startTime)
 		c.Next()
 		c.Header("response_time", fmt.Sprintf("%dms", Now().Sub(startTime).Milliseconds()))
 	}

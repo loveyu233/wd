@@ -9,12 +9,12 @@ import (
 func MiddlewareTraceID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		traceID := uuid.NewString()
-		c.Header(CUSTOMCONSTTRACEIDHEADER, traceID)
-		c.Set(CUSTOMCONSTTRACEIDHEADER, traceID)
+		c.Header(HeaderTraceID, traceID)
+		c.Set(HeaderTraceID, traceID)
 		c.Next()
 	}
 }
 
 func GetTraceID(c *gin.Context) string {
-	return c.GetString(CUSTOMCONSTTRACEIDHEADER)
+	return c.GetString(HeaderTraceID)
 }

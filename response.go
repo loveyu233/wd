@@ -235,8 +235,8 @@ type Response struct {
 func ResponseError(c *gin.Context, err error) {
 	GetContextLogger(c).Error().Msg("resp_err", err.Error())
 	appErr := ConvertToAppError(err)
-	c.Set(CUSTOMCONSTRESPSTATUS, appErr.Code)
-	c.Set(CUSTOMCONSTRESPMSG, appErr.Message)
+	c.Set(CtxKeyRespStatus, appErr.Code)
+	c.Set(CtxKeyRespMsg, appErr.Message)
 	c.JSON(http.StatusOK, &Response{
 		Code:    appErr.Code,
 		Message: appErr.Message,
@@ -247,8 +247,8 @@ func ResponseError(c *gin.Context, err error) {
 func ResponseParamError(c *gin.Context, err error) {
 	GetContextLogger(c).Error().Msg("resp_err", err.Error())
 	te := TranslateError(err).Error()
-	c.Set(CUSTOMCONSTRESPSTATUS, ErrInvalidParam.Code)
-	c.Set(CUSTOMCONSTRESPMSG, te)
+	c.Set(CtxKeyRespStatus, ErrInvalidParam.Code)
+	c.Set(CtxKeyRespMsg, te)
 	if te == "" {
 		te = ErrInvalidParam.Message
 	}
@@ -269,8 +269,8 @@ func ResponseSuccess(c *gin.Context, data any, msg ...string) {
 		ResponseSuccessMsg(c, cast.ToString(data))
 		return
 	}
-	c.Set(CUSTOMCONSTRESPSTATUS, http.StatusOK)
-	c.Set(CUSTOMCONSTRESPMSG, message)
+	c.Set(CtxKeyRespStatus, http.StatusOK)
+	c.Set(CtxKeyRespMsg, message)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
 		Message: message,
@@ -280,8 +280,8 @@ func ResponseSuccess(c *gin.Context, data any, msg ...string) {
 
 // ResponseSuccessMsg 只返回成功的msg没有data
 func ResponseSuccessMsg(c *gin.Context, msg string) {
-	c.Set(CUSTOMCONSTRESPSTATUS, http.StatusOK)
-	c.Set(CUSTOMCONSTRESPMSG, msg)
+	c.Set(CtxKeyRespStatus, http.StatusOK)
+	c.Set(CtxKeyRespMsg, msg)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
 		Message: msg,
@@ -297,8 +297,8 @@ func ResponseSuccessToken(c *gin.Context, token string) {
 
 // ResponseSuccessEncryptData 对响应数据进行加密后返回。
 func ResponseSuccessEncryptData(c *gin.Context, data any, custom func(now int64) (key, nonce string)) {
-	c.Set(CUSTOMCONSTRESPSTATUS, http.StatusOK)
-	c.Set(CUSTOMCONSTRESPMSG, "请求成功")
+	c.Set(CtxKeyRespStatus, http.StatusOK)
+	c.Set(CtxKeyRespMsg, "请求成功")
 	response, err := EncryptData(data, custom)
 	if err != nil {
 		c.JSON(http.StatusOK, &Response{

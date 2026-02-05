@@ -16,7 +16,7 @@ type WXPay struct {
 	// 是否保存请求日志
 	IsSaveHandlerLog bool
 }
-type WXPayImp interface {
+type WXPayHandler interface {
 	PayNotify(orderId string, attach string) error
 	RefundNotify(orderId string) error
 
@@ -46,8 +46,8 @@ type Payment struct {
 }
 
 type WXPaymentAppConfig struct {
-	Payment  Payment
-	WXPayImp WXPayImp
+	Payment      Payment
+	WXPayHandler WXPayHandler
 }
 
 func InitWXWXPaymentApp(paymentConfig WXPaymentAppConfig) (*WXPay, error) {
@@ -76,10 +76,10 @@ func InitWXWXPaymentApp(paymentConfig WXPaymentAppConfig) (*WXPay, error) {
 	}
 	return &WXPay{
 		PaymentApp:          paymentApp,
-		payNotifyHandler:    paymentConfig.WXPayImp.PayNotify,
-		refundNotifyHandler: paymentConfig.WXPayImp.RefundNotify,
-		payHandler:          paymentConfig.WXPayImp.Pay,
-		refundHandler:       paymentConfig.WXPayImp.Refund,
+		payNotifyHandler:    paymentConfig.WXPayHandler.PayNotify,
+		refundNotifyHandler: paymentConfig.WXPayHandler.RefundNotify,
+		payHandler:          paymentConfig.WXPayHandler.Pay,
+		refundHandler:       paymentConfig.WXPayHandler.Refund,
 		IsSaveHandlerLog:    paymentConfig.Payment.IsSaveHandlerLog,
 	}, nil
 }
