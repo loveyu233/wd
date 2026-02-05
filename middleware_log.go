@@ -47,11 +47,11 @@ func NewRequestLogger(ctx context.Context, logger zerolog.Logger) *RequestLogger
 		logger:     logger,
 	}
 }
-func (r *RequestLogger) SetDurationMs(durationMs int64) {
-	r.durationMs = durationMs
+func (rl *RequestLogger) SetDurationMs(durationMs int64) {
+	rl.durationMs = durationMs
 }
-func (r *RequestLogger) SetStatusCode(statusCode int) {
-	r.statusCode = statusCode
+func (rl *RequestLogger) SetStatusCode(statusCode int) {
+	rl.statusCode = statusCode
 }
 
 // AddEntry 用来把一条日志事件写入缓冲区。

@@ -35,13 +35,13 @@ type GormConnConfig struct {
 // InitGormDB 用来根据配置初始化全局 GORM 连接。
 func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?", gcc.Username, gcc.Password, gcc.Host, gcc.Port, gcc.Database)
-	if gcc.Params["charset"] == nil {
+	if gcc.Params == nil || gcc.Params["charset"] == nil {
 		dsn = fmt.Sprintf("%scharset=utf8", dsn)
 	}
-	if gcc.Params["parseTime"] == nil {
+	if gcc.Params == nil || gcc.Params["parseTime"] == nil {
 		dsn = fmt.Sprintf("%s&parseTime=true", dsn)
 	}
-	if gcc.Params["loc"] == nil {
+	if gcc.Params == nil || gcc.Params["loc"] == nil {
 		dsn = fmt.Sprintf("%s&loc=Asia%%2FShanghai", dsn)
 	}
 	for k, v := range gcc.Params {
@@ -84,7 +84,6 @@ type gormLoggerSettings struct {
 type GormLoggerOption func(*gormLoggerSettings)
 
 // WithGormConfigLogLevel 设置日志级别（logger.Silent/Error/Warn/Info）。
-
 func WithGormConfigLogLevel(level logger.LogLevel) GormLoggerOption {
 	return func(settings *gormLoggerSettings) {
 		settings.cfg.LogLevel = level
@@ -143,7 +142,6 @@ func WithGormConfigLogFlag(flag int) GormLoggerOption {
 }
 
 // GormDefaultLogger 用来生成带默认阈值的 GORM 日志器。
-
 func GormDefaultLogger(opts ...GormLoggerOption) logger.Interface {
 	settings := &gormLoggerSettings{
 		cfg: logger.Config{
