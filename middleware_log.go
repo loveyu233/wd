@@ -102,13 +102,14 @@ func (rl *RequestLogger) Flush() {
 	// 添加所有收集的日志条目
 	var latencyMsInfoArr []string
 	for _, entry := range rl.entries {
-		if entry.Key == CUSTOMCONSTRESPINFO || entry.Key == CUSTOMCONSTREQINFO {
+		switch entry.Key {
+		case CUSTOMCONSTRESPINFO, CUSTOMCONSTREQINFO:
 			event = event.Any(entry.Key, entry.Fields)
-		} else if entry.Key == CUSTOMCONSTLATENCYMSINFO {
+		case CUSTOMCONSTLATENCYMSINFO:
 			latencyMsInfoArr = append(latencyMsInfoArr, entry.Message)
-		} else if entry.Key == CUSTOMCONSTTRACEIDHEADER {
+		case CUSTOMCONSTTRACEIDHEADER:
 			event = event.Any("trace_id", entry.Fields[CUSTOMCONSTTRACEIDHEADER])
-		} else {
+		default:
 			event = event.Any(entry.Key, entry)
 		}
 	}
@@ -643,20 +644,6 @@ func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
 		c.Set(CUSTOMCONSTGJSONKEYS, gjsonKeys)
 		c.Next()
 	}
-}
-
-// shouldCaptureRequestBody 用来判断请求体是否可被记录并给出原因。
-func shouldCaptureRequestBody(r *http.Request) (bool, string) {
-	if r == nil {
-		return false, "请求为零"
-	}
-	if r.Body == nil || r.Body == http.NoBody {
-		return false, "无请求数据"
-	}
-	if r.ContentLength == -1 {
-		return false, "请求数据错误大小为-1"
-	}
-	return true, ""
 }
 
 // recordBodySkip 用来写入未记录请求体的原因。

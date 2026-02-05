@@ -184,7 +184,7 @@ func (wx *WXPay) Refund(req *RefundRequest) (*RefundResp, error) {
 	}
 	if refund.TransactionID == "" {
 		fmt.Println(refund, err)
-		return nil, errors.New(fmt.Sprintf("get transactionID err:%s", refund.Message))
+		return nil, fmt.Errorf("get transactionID err:%s", refund.Message)
 	}
 	return &RefundResp{
 		Code:        0,

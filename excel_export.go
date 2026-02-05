@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -522,7 +521,7 @@ func (e *ExcelExporter) getColumnName(col int) string {
 		}
 	}
 
-	return *(*string)(unsafe.Pointer(&result))
+	return string(result)
 }
 
 // createHeaderStyle 用来根据配置生成表头样式。

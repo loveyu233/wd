@@ -49,9 +49,7 @@ func (h *SignalHook) WithSignals(signals ...syscall.Signal) Hook {
 
 // Close 用来在收到信号后执行注册的清理函数。
 func (h *SignalHook) Close() {
-	select {
-	case <-h.ctx:
-	}
+	<-h.ctx
 	signal.Stop(h.ctx)
 
 	for _, f := range h.CloseFuncs {

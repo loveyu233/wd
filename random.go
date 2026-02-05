@@ -31,10 +31,12 @@ func GetSnowflakeID() int64 {
 		w, err := NewWorker(1)
 		if err != nil {
 			panic(err)
-			return
 		}
 		worker = w
 	})
+	if worker == nil {
+		panic("snowflake worker not initialized")
+	}
 	return worker.GetId()
 }
 

@@ -132,7 +132,7 @@ func (e *CachedEnforcer) CustomAddRolesForUser(user string, roles ...string) (bo
 	}
 	for _, role := range roles {
 		if v := rulesMap[role]; !v {
-			return false, errors.New(fmt.Sprintf("角色%s不存在", role))
+			return false, fmt.Errorf("角色%s不存在", role)
 		}
 	}
 	return e.AddRolesForUser(user, roles)

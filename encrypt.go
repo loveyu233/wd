@@ -40,15 +40,6 @@ func encryptAESGCM(plaintext []byte, key []byte) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// generateNonce 用来生成指定长度的随机 nonce。
-func generateNonce(length int) (string, error) {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(bytes), nil
-}
-
 // EncryptData 用来序列化数据并返回加密后的响应体。
 func EncryptData(data any, custom func(now int64) (key, nonce string)) (*EncryptedResponse, error) {
 	jsonData, err := json.Marshal(data)

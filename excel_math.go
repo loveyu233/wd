@@ -2,7 +2,6 @@ package wd
 
 import (
 	"fmt"
-	"unsafe"
 )
 
 // ExcelGetPosition 用来把行列索引转换为 Excel 坐标字符串。
@@ -22,8 +21,7 @@ func ExcelGetPosition(row, col int) string {
 	// 高效转换行号
 	buf = appendInt64(buf, row+1)
 
-	// 直接转换为字符串，避免额外拷贝
-	return *(*string)(unsafe.Pointer(&buf))
+	return string(buf)
 }
 
 // appendExcelColumn 用来把列索引编码成 Excel 列字母。
