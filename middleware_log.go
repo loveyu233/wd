@@ -357,15 +357,6 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 
 		c.Next()
 		if c.GetBool(CUSTOMCONSTSKIP) {
-			//for _, m := range tracker.Marks() {
-			//	WriteGinInfoLog(c, m.Name, "[%s] 运行至此总耗时=%.2fms 当前阶段耗时=%.2fms",
-			//		m.Name,
-			//		float64(m.SinceStart.Microseconds())/1000,
-			//		float64(m.SincePrev.Microseconds())/1000)
-			//}
-			//requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
-			//requestLogger.Flush()
-			c.Next()
 			return
 		}
 		requestLogger.AddEntry(CUSTOMCONSTTRACEIDHEADER, zerolog.InfoLevel, "response", map[string]any{CUSTOMCONSTTRACEIDHEADER: GetTraceID(c)})
@@ -514,33 +505,28 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		}
 
 		if c.GetBool(CUSTOMCONSTONLYREQ) {
-			// 输出所有收集的日志
-			requestLogger.Flush()
 			requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
 			requestLogger.SetStatusCode(c.Writer.Status())
-			c.Next()
+			// 输出所有收集的日志
+			requestLogger.Flush()
 			return
 		}
 
 		duration := Now().Sub(startTime)
 
+		// 读取响应体（只读取一次）
+		respBody := bodyBuffer.Bytes()
 		bodyMap := make(map[string]any)
 		if !c.GetBool(CUSTOMCONSTBRIEF) {
-			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
-			if err != nil {
-				recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
-			} else {
-				if err := json.Unmarshal(readAll, &bodyMap); err != nil {
-					recordBodySkip(params, fmt.Sprintf("解析请求体失败: %v", err))
+			if len(respBody) > 0 {
+				if err := json.Unmarshal(respBody, &bodyMap); err != nil {
+					recordBodySkip(params, fmt.Sprintf("解析响应体失败: %v", err))
 				}
 			}
 		} else {
-			readAll, err := io.ReadAll(io.NopCloser(bodyBuffer))
 			for _, ele := range c.GetStringSlice(CUSTOMCONSTGJSONKEYS) {
-				if err != nil {
-					recordBodySkip(params, fmt.Sprintf("读取请求体失败: %v", err))
-				} else {
-					bodyMap[ele] = gjson.GetBytes(readAll, ele).Value()
+				if len(respBody) > 0 {
+					bodyMap[ele] = gjson.GetBytes(respBody, ele).Value()
 				}
 			}
 		}
@@ -656,8 +642,6 @@ func recordBodySkip(params map[string]any, reason string) {
 	}
 }
 
-var defaultMaskedHeaders = []string{"authorization"}
-
 type Mark struct {
 	key        string
 	Name       string
@@ -666,14 +650,14 @@ type Mark struct {
 }
 
 type Tracker struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	start time.Time
 	last  time.Time
 	marks []Mark
 }
 
 func NewTracker() *Tracker {
-	now := time.Now()
+	now := Now()
 	return &Tracker{start: now, last: now}
 }
 
@@ -681,7 +665,7 @@ func (t *Tracker) Mark(name string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	now := time.Now()
+	now := Now()
 	t.marks = append(t.marks, Mark{
 		key:        CUSTOMCONSTLATENCYMSINFO,
 		Name:       name,
@@ -692,8 +676,8 @@ func (t *Tracker) Mark(name string) {
 }
 
 func (t *Tracker) Marks() []Mark {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
 	out := make([]Mark, len(t.marks))
 	copy(out, t.marks)

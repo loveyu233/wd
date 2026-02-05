@@ -24,10 +24,10 @@ func (pr *PublicRoutesType) Append(f func(*gin.RouterGroup)) {
 	*pr = append(*pr, f)
 }
 
-func (pb *PrivateRoutesType) Append(f func(*gin.RouterGroup)) {
+func (pr *PrivateRoutesType) Append(f func(*gin.RouterGroup)) {
 	privateRoutesLock.Lock()
 	defer privateRoutesLock.Unlock()
-	*pb = append(*pb, f)
+	*pr = append(*pr, f)
 }
 
 type RouterConfig struct {
@@ -177,17 +177,20 @@ func initPrivateRouter(config RouterConfig) *gin.Engine {
 	publicRoutes := make([]func(*gin.RouterGroup), 0, len(PublicRoutes)+1)
 	publicRoutes = append(publicRoutes, func(group *gin.RouterGroup) {
 		if !config.outputHealthz {
-			group.Any("/healthz", GinLogSetSkipLogFlag(), func(c *gin.Context) {
+			group.GET("/healthz", GinLogSetSkipLogFlag(), func(c *gin.Context) {
 				c.Status(200)
 			})
 		} else {
-			group.Any("/healthz", func(c *gin.Context) {
+			group.GET("/healthz", func(c *gin.Context) {
 				c.Status(200)
 			})
 		}
 	})
 	publicRoutes = append(publicRoutes, PublicRoutes...)
-	privateRoutes := append(make([]func(*gin.RouterGroup), 0, len(PrivateRoutes)), PrivateRoutes...)
+
+	// 复制 PrivateRoutes 避免修改原始切片
+	privateRoutes := make([]func(*gin.RouterGroup), len(PrivateRoutes))
+	copy(privateRoutes, PrivateRoutes)
 
 	config.globalMiddleware = append(config.globalMiddleware, MiddlewareTraceID(), MiddlewareRequestTime(), MiddlewareRecovery())
 	if !config.skipLog {
