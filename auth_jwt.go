@@ -13,8 +13,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var InsGinJWTMiddleware *GinJWTMiddleware
-
 // MapClaims 使用 map[string]interface{} 进行 JSON 解码的类型
 // 如果你没有提供一个，这是默认的声明类型
 type MapClaims map[string]interface{}
@@ -165,12 +163,11 @@ type GinJWTMiddleware struct {
 }
 
 // InitGinJWTMiddleware 用来初始化 GinJWTMiddleware 并执行必要检查。
-func InitGinJWTMiddleware(m *GinJWTMiddleware) error {
+func InitGinJWTMiddleware(m *GinJWTMiddleware) (*GinJWTMiddleware, error) {
 	if err := m.MiddlewareInit(); err != nil {
-		return err
+		return nil, err
 	}
-	InsGinJWTMiddleware = m
-	return nil
+	return m, nil
 }
 
 // readKeys 用来加载配置中的私钥和公钥文件。

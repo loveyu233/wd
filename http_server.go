@@ -22,9 +22,7 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOption) *H
 	for _, opt := range opts {
 		opt(&config)
 	}
-	if InsGinJWTMiddleware != nil && !config.skipGinJWTMiddleware {
-		config.authMiddleware = append(config.authMiddleware, InsGinJWTMiddleware.MiddlewareFunc())
-	}
+
 	if config.model == "" {
 		config.model = GinModelDebug
 	}
