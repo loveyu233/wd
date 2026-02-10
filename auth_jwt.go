@@ -163,10 +163,9 @@ type GinJWTMiddleware struct {
 }
 
 // InitGinJWTMiddleware 用来初始化 GinJWTMiddleware 并执行必要检查。
-func InitGinJWTMiddleware(m GinJWTMiddleware) GinJWTMiddleware {
-	m.MiddlewareInit()
-	return m
-}
+//func InitGinJWTMiddleware(m *GinJWTMiddleware) {
+//	m.Init()
+//}
 
 // readKeys 用来加载配置中的私钥和公钥文件。
 func (mw *GinJWTMiddleware) readKeys() error {
@@ -232,8 +231,8 @@ func (mw *GinJWTMiddleware) usingPublicKeyAlgo() bool {
 	return false
 }
 
-// MiddlewareInit 用来填充中间件的默认配置与依赖。
-func (mw *GinJWTMiddleware) MiddlewareInit() {
+// Init 用来填充中间件的默认配置与依赖。
+func (mw *GinJWTMiddleware) Init() {
 	if mw.TokenLookup == "" {
 		mw.TokenLookup = "header:Authorization"
 	}
