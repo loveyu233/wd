@@ -17,6 +17,36 @@ import (
 // 如果你没有提供一个，这是默认的声明类型
 type MapClaims map[string]interface{}
 
+// JWTCookieConfig 聚合所有与 Cookie 相关的配置字段。
+type JWTCookieConfig struct {
+	// Cookie 名称，默认 "jwt"。
+	Name string
+	// Cookie 有效时长，默认等于 Timeout。
+	MaxAge time.Duration
+	// Cookie 域名。
+	Domain string
+	// 是否仅通过 HTTPS 发送。
+	Secure bool
+	// 是否禁止 JS 访问。
+	HTTPOnly bool
+	// SameSite 策略。
+	SameSite http.SameSite
+}
+
+// JWTRSAConfig 聚合所有与 RSA 非对称算法相关的配置字段。
+type JWTRSAConfig struct {
+	// 私钥文件路径，优先于 PrivKeyBytes。
+	PrivKeyFile string
+	// 私钥 PEM 字节。
+	PrivKeyBytes []byte
+	// 公钥文件路径，优先于 PubKeyBytes。
+	PubKeyFile string
+	// 公钥 PEM 字节。
+	PubKeyBytes []byte
+	// 私钥密码短语。
+	PrivateKeyPassphrase string
+}
+
 // GinJWTMiddleware 提供 Json-Web-Token 身份验证实现。失败时，返回 401 HTTP 响应
 // 成功时，调用包装的中间件，并将 userID 设置为 c.Get("userID").(string)
 // 用户可以通过向 LoginHandler 发送 json 请求来获取令牌。然后需要在 Authentication 头中传递令牌
@@ -106,24 +136,8 @@ type GinJWTMiddleware struct {
 	// 检查错误 (e) 以确定适当的错误消息。
 	HTTPStatusMessageFunc func(e error, c *gin.Context) string
 
-	// 用于非对称算法的私钥文件
-	PrivKeyFile string
-
-	// 用于非对称算法的私钥字节
-	//
-	// 注意：如果两者都设置，PrivKeyFile 优先于 PrivKeyBytes
-	PrivKeyBytes []byte
-
-	// 用于非对称算法的公钥文件
-	PubKeyFile string
-
-	// 私钥密码短语
-	PrivateKeyPassphrase string
-
-	// 用于非对称算法的公钥字节。
-	//
-	// 注意：如果两者都设置，PubKeyFile 优先于 PubKeyBytes
-	PubKeyBytes []byte
+	// RSA 非对称算法配置。
+	RSA JWTRSAConfig
 
 	// 私钥
 	privKey *rsa.PrivateKey
@@ -131,20 +145,8 @@ type GinJWTMiddleware struct {
 	// 公钥
 	pubKey *rsa.PublicKey
 
-	// 可选地将令牌作为 cookie 返回
-	SendCookie bool
-
-	// cookie 有效的持续时间。可选，默认等于 Timeout 值。
-	CookieMaxAge time.Duration
-
-	// 允许不安全的 cookie 用于 http 开发
-	SecureCookie bool
-
-	// 允许客户端访问 cookie 用于开发
-	CookieHTTPOnly bool
-
-	// 允许 cookie 域更改用于开发
-	CookieDomain string
+	// Cookie 配置，设置后自动启用 Cookie 发送。
+	Cookie *JWTCookieConfig
 
 	// SendAuthorization 允许为每个请求返回授权头
 	SendAuthorization bool
@@ -152,20 +154,21 @@ type GinJWTMiddleware struct {
 	// 禁用上下文的 abort()。
 	DisabledAbort bool
 
-	// CookieName 允许更改 cookie 名称用于开发
-	CookieName string
-
-	// CookieSameSite 允许使用 http.SameSite cookie 参数
-	CookieSameSite http.SameSite
-
 	// ParseOptions 允许修改 jwt 的解析方法
 	ParseOptions []jwt.ParserOption
 }
 
-// InitGinJWTMiddleware 用来初始化 GinJWTMiddleware 并执行必要检查。
-//func InitGinJWTMiddleware(m *GinJWTMiddleware) {
-//	m.Init()
-//}
+// JWTOption 是 GinJWTMiddleware 的函数选项类型。
+type JWTOption func(*GinJWTMiddleware)
+
+// NewGinJWTMiddleware 使用函数选项创建并初始化 GinJWTMiddleware。
+func NewGinJWTMiddleware(opts ...JWTOption) (*GinJWTMiddleware, error) {
+	mw := &GinJWTMiddleware{}
+	for _, opt := range opts {
+		opt(mw)
+	}
+	return mw, mw.init()
+}
 
 // readKeys 用来加载配置中的私钥和公钥文件。
 func (mw *GinJWTMiddleware) readKeys() error {
@@ -183,10 +186,10 @@ func (mw *GinJWTMiddleware) readKeys() error {
 // privateKey 用来读取并解析 RSA 私钥。
 func (mw *GinJWTMiddleware) privateKey() error {
 	var keyData []byte
-	if mw.PrivKeyFile == "" {
-		keyData = mw.PrivKeyBytes
+	if mw.RSA.PrivKeyFile == "" {
+		keyData = mw.RSA.PrivKeyBytes
 	} else {
-		filecontent, err := os.ReadFile(mw.PrivKeyFile)
+		filecontent, err := os.ReadFile(mw.RSA.PrivKeyFile)
 		if err != nil {
 			return MsgErrTokenServerInvalid("私钥文件读取失败")
 		}
@@ -204,10 +207,10 @@ func (mw *GinJWTMiddleware) privateKey() error {
 // publicKey 用来读取并解析 RSA 公钥。
 func (mw *GinJWTMiddleware) publicKey() error {
 	var keyData []byte
-	if mw.PubKeyFile == "" {
-		keyData = mw.PubKeyBytes
+	if mw.RSA.PubKeyFile == "" {
+		keyData = mw.RSA.PubKeyBytes
 	} else {
-		filecontent, err := os.ReadFile(mw.PubKeyFile)
+		filecontent, err := os.ReadFile(mw.RSA.PubKeyFile)
 		if err != nil {
 			return MsgErrTokenServerInvalid("公钥文件读取失败")
 		}
@@ -231,8 +234,8 @@ func (mw *GinJWTMiddleware) usingPublicKeyAlgo() bool {
 	return false
 }
 
-// Init 用来填充中间件的默认配置与依赖。
-func (mw *GinJWTMiddleware) Init() {
+// init 用来填充中间件的默认配置与依赖。
+func (mw *GinJWTMiddleware) init() error {
 	if mw.TokenLookup == "" {
 		mw.TokenLookup = "header:Authorization"
 	}
@@ -323,27 +326,29 @@ func (mw *GinJWTMiddleware) Init() {
 		mw.Realm = "token"
 	}
 
-	if mw.CookieMaxAge == 0 {
-		mw.CookieMaxAge = mw.Timeout
+	// Cookie 默认值
+	if mw.Cookie != nil {
+		if mw.Cookie.MaxAge == 0 {
+			mw.Cookie.MaxAge = mw.Timeout
+		}
+		if mw.Cookie.Name == "" {
+			mw.Cookie.Name = "jwt"
+		}
 	}
 
-	if mw.CookieName == "" {
-		mw.CookieName = "jwt"
+	// 密钥校验
+	if mw.KeyFunc != nil {
+		return nil
 	}
 
-	// 如果设置了 KeyFunc，则绕过其他密钥设置
-	//if mw.KeyFunc != nil {
-	//	return nil
-	//}
-	//
-	//if mw.usingPublicKeyAlgo() {
-	//	return mw.readKeys()
-	//}
-	//
-	//if mw.Key == nil {
-	//	return MsgErrTokenServerInvalid("密钥不能为空")
-	//}
-	//return nil
+	if mw.usingPublicKeyAlgo() {
+		return mw.readKeys()
+	}
+
+	if mw.Key == nil {
+		return MsgErrTokenServerInvalid("密钥不能为空")
+	}
+	return nil
 }
 
 // MiddlewareFunc 用来返回执行 JWT 校验的 gin.HandlerFunc。
@@ -477,11 +482,11 @@ func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 		}
 
 		// 设置 cookie
-		if mw.SendCookie {
-			expireCookie := mw.TimeFunc().Add(mw.CookieMaxAge)
+		if mw.Cookie != nil {
+			expireCookie := mw.TimeFunc().Add(mw.Cookie.MaxAge)
 			maxage := int(expireCookie.Unix() - mw.TimeFunc().Unix())
-			c.SetSameSite(mw.CookieSameSite)
-			c.SetCookie(mw.CookieName, tokenString, maxage, "/", mw.CookieDomain, mw.SecureCookie, mw.CookieHTTPOnly)
+			c.SetSameSite(mw.Cookie.SameSite)
+			c.SetCookie(mw.Cookie.Name, tokenString, maxage, "/", mw.Cookie.Domain, mw.Cookie.Secure, mw.Cookie.HTTPOnly)
 		}
 
 		mw.LoginResponse(c, http.StatusOK, tokenString, expire)
@@ -492,9 +497,9 @@ func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 func (mw *GinJWTMiddleware) LogoutHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 删除认证 cookie
-		if mw.SendCookie {
-			c.SetSameSite(mw.CookieSameSite)
-			c.SetCookie(mw.CookieName, "", -1, "/", mw.CookieDomain, mw.SecureCookie, mw.CookieHTTPOnly)
+		if mw.Cookie != nil {
+			c.SetSameSite(mw.Cookie.SameSite)
+			c.SetCookie(mw.Cookie.Name, "", -1, "/", mw.Cookie.Domain, mw.Cookie.Secure, mw.Cookie.HTTPOnly)
 		}
 
 		mw.LogoutResponse(c, http.StatusOK)
@@ -553,11 +558,11 @@ func (mw *GinJWTMiddleware) RefreshToken(c *gin.Context) (string, time.Time, err
 	}
 
 	// 设置 cookie
-	if mw.SendCookie {
-		expireCookie := mw.TimeFunc().Add(mw.CookieMaxAge)
+	if mw.Cookie != nil {
+		expireCookie := mw.TimeFunc().Add(mw.Cookie.MaxAge)
 		maxage := int(expireCookie.Unix() - time.Now().Unix())
-		c.SetSameSite(mw.CookieSameSite)
-		c.SetCookie(mw.CookieName, tokenString, maxage, "/", mw.CookieDomain, mw.SecureCookie, mw.CookieHTTPOnly)
+		c.SetSameSite(mw.Cookie.SameSite)
+		c.SetCookie(mw.Cookie.Name, tokenString, maxage, "/", mw.Cookie.Domain, mw.Cookie.Secure, mw.Cookie.HTTPOnly)
 	}
 
 	return tokenString, expire, nil
@@ -757,7 +762,19 @@ func (mw *GinJWTMiddleware) GetIdentity(c *gin.Context) any {
 	return c.MustGet(mw.IdentityKey)
 }
 
-// ExtractClaims 用来从 gin.Context 中取出 JWT Claims。
+// GetIdentityAs 是泛型版本的 GetIdentity，避免调用方手动类型断言。
+func GetIdentityAs[T any](mw *GinJWTMiddleware, c *gin.Context) (T, bool) {
+	val := mw.GetIdentity(c)
+	t, ok := val.(T)
+	return t, ok
+}
+
+// ExtractClaims 是 GinJWTMiddleware 的实例方法，从 gin.Context 中取出 JWT Claims。
+func (mw *GinJWTMiddleware) ExtractClaims(c *gin.Context) MapClaims {
+	return ExtractClaims(c)
+}
+
+// ExtractClaims 用来从 gin.Context 中取出 JWT Claims（包级函数）。
 func ExtractClaims(c *gin.Context) MapClaims {
 	claims, exists := c.Get(CtxKeyJWTPayload)
 	if !exists {

@@ -48,31 +48,31 @@ var users = map[string]string{
 }
 
 func main() {
-    auth := &wd.GinJWTMiddleware{
-        Realm:       "demo zone",
-        Key:         []byte("change-me"),
-        Timeout:     30 * time.Minute,
-        MaxRefresh:  time.Hour,
-        IdentityKey: "username",
-        Authenticator: func(c *gin.Context) (interface{}, error) {
+    auth, err := wd.NewGinJWTMiddleware(
+        wd.WithJWTRealm("demo zone"),
+        wd.WithJWTKey([]byte("change-me")),
+        wd.WithJWTTimeout(30*time.Minute),
+        wd.WithJWTMaxRefresh(time.Hour),
+        wd.WithJWTIdentityKey("username"),
+        wd.WithJWTAuthenticator(func(c *gin.Context) (interface{}, error) {
             var req loginReq
             if err := c.ShouldBindJSON(&req); err != nil {
                 return nil, err
             }
             if pwd, ok := users[req.Username]; !ok || pwd != req.Password {
-                return nil, wd.ErrFailedAuthentication
+                return nil, wd.MsgErrBadRequest("账号或密码错误")
             }
             return &account{Username: req.Username}, nil
-        },
-        Authorizator: func(data interface{}, c *gin.Context) bool {
+        }),
+        wd.WithJWTAuthorizator(func(data interface{}, c *gin.Context) bool {
             acc, ok := data.(*account)
             if !ok {
                 return false
             }
             c.Set("currentAccount", acc)
             return true
-        },
-        PayloadFunc: func(data interface{}) wd.MapClaims {
+        }),
+        wd.WithJWTPayloadFunc(func(data interface{}) wd.MapClaims {
             if acc, ok := data.(*account); ok {
                 return wd.MapClaims{
                     "username": acc.Username,
@@ -80,9 +80,9 @@ func main() {
                 }
             }
             return wd.MapClaims{}
-        },
-    }
-    if err := wd.InitGinJWTMiddleware(auth); err != nil {
+        }),
+    )
+    if err != nil {
         log.Fatalf("init jwt failed: %v", err)
     }
 
@@ -91,7 +91,7 @@ func main() {
     })
     wd.PrivateRoutes.Append(func(rg *gin.RouterGroup) {
         rg.GET("/profile", func(c *gin.Context) {
-            claims := wd.ExtractClaims(c)
+            claims := auth.ExtractClaims(c)
             c.JSON(http.StatusOK, gin.H{
                 "claims": claims,
                 "token":  wd.GetToken(c),
@@ -131,6 +131,7 @@ curl http://127.0.0.1:8080/api/profile \
  ## 目录速览
       .
       ├── auth_jwt.go            # JWT 中间件及登录/刷新/退出处理器
+      ├── auth_jwt_options.go     # JWT 中间件函数选项（WithJWT* 系列）
       ├── gin_engine.go          # Gin Router 构建、公共/私有路由注册与中间件装配
       ├── http.go                # HTTP Server 启动器、优雅关闭、默认认证中间件挂载
       ├── middleware_trace_id.go # TraceID 注入
