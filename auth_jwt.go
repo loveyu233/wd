@@ -163,11 +163,9 @@ type GinJWTMiddleware struct {
 }
 
 // InitGinJWTMiddleware 用来初始化 GinJWTMiddleware 并执行必要检查。
-func InitGinJWTMiddleware(m *GinJWTMiddleware) (*GinJWTMiddleware, error) {
-	if err := m.MiddlewareInit(); err != nil {
-		return nil, err
-	}
-	return m, nil
+func InitGinJWTMiddleware(m GinJWTMiddleware) GinJWTMiddleware {
+	m.MiddlewareInit()
+	return m
 }
 
 // readKeys 用来加载配置中的私钥和公钥文件。
@@ -235,7 +233,7 @@ func (mw *GinJWTMiddleware) usingPublicKeyAlgo() bool {
 }
 
 // MiddlewareInit 用来填充中间件的默认配置与依赖。
-func (mw *GinJWTMiddleware) MiddlewareInit() error {
+func (mw *GinJWTMiddleware) MiddlewareInit() {
 	if mw.TokenLookup == "" {
 		mw.TokenLookup = "header:Authorization"
 	}
@@ -335,18 +333,18 @@ func (mw *GinJWTMiddleware) MiddlewareInit() error {
 	}
 
 	// 如果设置了 KeyFunc，则绕过其他密钥设置
-	if mw.KeyFunc != nil {
-		return nil
-	}
-
-	if mw.usingPublicKeyAlgo() {
-		return mw.readKeys()
-	}
-
-	if mw.Key == nil {
-		return MsgErrTokenServerInvalid("密钥不能为空")
-	}
-	return nil
+	//if mw.KeyFunc != nil {
+	//	return nil
+	//}
+	//
+	//if mw.usingPublicKeyAlgo() {
+	//	return mw.readKeys()
+	//}
+	//
+	//if mw.Key == nil {
+	//	return MsgErrTokenServerInvalid("密钥不能为空")
+	//}
+	//return nil
 }
 
 // MiddlewareFunc 用来返回执行 JWT 校验的 gin.HandlerFunc。
@@ -754,6 +752,10 @@ func (mw *GinJWTMiddleware) unauthorized(c *gin.Context, code int, message strin
 	}
 
 	mw.Unauthorized(c, code, message)
+}
+
+func (mw *GinJWTMiddleware) GetIdentity(c *gin.Context) any {
+	return c.MustGet(mw.IdentityKey)
 }
 
 // ExtractClaims 用来从 gin.Context 中取出 JWT Claims。
