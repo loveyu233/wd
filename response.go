@@ -30,7 +30,7 @@ func (e *AppError) WithMessage(msg string, errs ...error) *AppError {
 	}
 	var newErr *AppError
 	if len(errs) > 0 {
-		newErr = NewAppError(e.Code, msg, e)
+		newErr = NewAppError(e.Code, msg, errs[0])
 	} else {
 		newErr = NewAppError(e.Code, msg, nil)
 	}
@@ -294,6 +294,7 @@ type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
+	E       string `json:"e,omitempty"`
 }
 
 // ResponseError 根据错误输出统一的 JSON 响应。
@@ -302,10 +303,14 @@ func ResponseError(c *gin.Context, err error) {
 	appErr := ConvertToAppError(err)
 	c.Set(CtxKeyRespStatus, appErr.Code)
 	c.Set(CtxKeyRespMsg, appErr.Message)
-	c.JSON(http.StatusOK, &Response{
+	resp := &Response{
 		Code:    appErr.Code,
 		Message: appErr.Message,
-	})
+	}
+	if appErr.E != nil {
+		resp.E = appErr.E.Error()
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ResponseParamError 输出校验失败时的 JSON 响应。
