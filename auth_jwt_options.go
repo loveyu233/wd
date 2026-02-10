@@ -46,16 +46,6 @@ func WithJWTIdentityKey(key string) JWTOption {
 
 // ── 回调 ──────────────────────────────────────────────────────
 
-// WithJWTAuthenticator 设置用户身份验证回调。
-func WithJWTAuthenticator(fn func(c *gin.Context) (interface{}, error)) JWTOption {
-	return func(mw *GinJWTMiddleware) { mw.Authenticator = fn }
-}
-
-// WithJWTPayloadFunc 设置自定义有效载荷回调。
-func WithJWTPayloadFunc(fn func(data interface{}) MapClaims) JWTOption {
-	return func(mw *GinJWTMiddleware) { mw.PayloadFunc = fn }
-}
-
 // WithJWTIdentityHandler 设置身份处理函数：提取身份并判断是否放行。
 // 返回 (identity, nil) 表示放行，返回 (nil, error) 表示拒绝。
 func WithJWTIdentityHandler(fn func(c *gin.Context) (interface{}, error)) JWTOption {

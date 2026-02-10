@@ -158,9 +158,21 @@ type GinJWTMiddleware struct {
 // JWTOption 是 GinJWTMiddleware 的函数选项类型。
 type JWTOption func(*GinJWTMiddleware)
 
-// NewGinJWTMiddleware 使用函数选项创建并初始化 GinJWTMiddleware。
-func NewGinJWTMiddleware(opts ...JWTOption) (*GinJWTMiddleware, error) {
+// NewGinJWTMiddleware 使用泛型创建并初始化 GinJWTMiddleware。
+// authenticator 用于验证用户身份，payloadFunc 用于将用户数据写入 JWT Claims。
+// T 由 authenticator 和 payloadFunc 的签名自动推断，无需手动指定。
+func NewGinJWTMiddleware[T any](
+	authenticator func(c *gin.Context) (T, error),
+	payloadFunc func(data T) MapClaims,
+	opts ...JWTOption,
+) (*GinJWTMiddleware, error) {
 	mw := &GinJWTMiddleware{}
+	mw.Authenticator = func(c *gin.Context) (any, error) {
+		return authenticator(c)
+	}
+	mw.PayloadFunc = func(data any) MapClaims {
+		return payloadFunc(data.(T))
+	}
 	for _, opt := range opts {
 		opt(mw)
 	}

@@ -49,12 +49,8 @@ var users = map[string]string{
 
 func main() {
     auth, err := wd.NewGinJWTMiddleware(
-        wd.WithJWTRealm("demo zone"),
-        wd.WithJWTKey([]byte("change-me")),
-        wd.WithJWTTimeout(30*time.Minute),
-        wd.WithJWTMaxRefresh(time.Hour),
-        wd.WithJWTIdentityKey("username"),
-        wd.WithJWTAuthenticator(func(c *gin.Context) (interface{}, error) {
+        // authenticator: 验证用户身份，返回具体类型
+        func(c *gin.Context) (*account, error) {
             var req loginReq
             if err := c.ShouldBindJSON(&req); err != nil {
                 return nil, err
@@ -63,24 +59,19 @@ func main() {
                 return nil, wd.MsgErrBadRequest("账号或密码错误")
             }
             return &account{Username: req.Username}, nil
-        }),
-        wd.WithJWTAuthorizator(func(data interface{}, c *gin.Context) bool {
-            acc, ok := data.(*account)
-            if !ok {
-                return false
+        },
+        // payloadFunc: 直接接收 *account，无需类型断言
+        func(data *account) wd.MapClaims {
+            return wd.MapClaims{
+                "username": data.Username,
+                "login_at": time.Now().Unix(),
             }
-            c.Set("currentAccount", acc)
-            return true
-        }),
-        wd.WithJWTPayloadFunc(func(data interface{}) wd.MapClaims {
-            if acc, ok := data.(*account); ok {
-                return wd.MapClaims{
-                    "username": acc.Username,
-                    "login_at": time.Now().Unix(),
-                }
-            }
-            return wd.MapClaims{}
-        }),
+        },
+        wd.WithJWTRealm("demo zone"),
+        wd.WithJWTKey([]byte("change-me")),
+        wd.WithJWTTimeout(30*time.Minute),
+        wd.WithJWTMaxRefresh(time.Hour),
+        wd.WithJWTIdentityKey("username"),
     )
     if err != nil {
         log.Fatalf("init jwt failed: %v", err)
