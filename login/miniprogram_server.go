@@ -33,7 +33,7 @@ func (w *WXMini) login(c *gin.Context) {
 
 	session, err := w.MiniProgramApp.Auth.Session(context.Background(), params.Code)
 	if err != nil || session.ErrCode != 0 {
-		wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("获取微信小程序用户会话代码失败"))
+		wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("微信登录失败，请重试"))
 		return
 	}
 
@@ -45,7 +45,7 @@ func (w *WXMini) login(c *gin.Context) {
 	//检测用户是否注册
 	user, exists, err = w.isExistsUser(session.UnionID)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrDatabase.WithMessage("查询用户信息失败:%s", err.Error()))
+		wd.ResponseError(c, wd.ErrDatabase.WithMessage("用户信息查询失败，请稍后重试"))
 		return
 	}
 	if !exists {
@@ -59,25 +59,25 @@ func (w *WXMini) login(c *gin.Context) {
 		//未注册,获取手机号
 		data, _err := w.MiniProgramApp.Encryptor.DecryptData(params.EncryptedData, session.SessionKey, params.IvStr)
 		if _err != nil {
-			wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("获取微信小程序用户数据失败"))
+			wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("微信授权失败，请重试"))
 			return
 		}
 		var info Phone
 		err = json.Unmarshal(data, &info)
 		if err != nil || info.PhoneNumber == "" {
-			wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("获取微信小程序用户手机号失败"))
+			wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("获取手机号失败，请重新授权"))
 			return
 		}
 
 		if user, err = w.createUser(info.PhoneNumber, session.UnionID, session.OpenID, c.ClientIP()); err != nil {
-			wd.ResponseError(c, wd.ErrDatabase.WithMessage("创建用户信息失败:%s", err.Error()))
+			wd.ResponseError(c, wd.ErrDatabase.WithMessage("注册失败，请稍后重试"))
 			return
 		}
 	}
 
 	data, err := w.generateToken(user, session.SessionKey)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("token生成失败:%s", err.Error()))
+		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("登录失败，请稍后重试"))
 		return
 	}
 	switch data.(type) {

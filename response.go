@@ -45,20 +45,20 @@ func NewAppError(code int, message string) *AppError {
 // 预定义错误 http状态码 + 业务错误码
 var (
 	// 100xxx 请求外部服务失败
-	ErrRequestExternalService = NewAppError(100000, "请求外部服务失败")
-	ErrRequestWechat          = NewAppError(100001, "请求wechat服务失败")
-	ErrRequestWechatPay       = NewAppError(100002, "请求wechat支付服务失败")
-	ErrRequestAli             = NewAppError(100003, "请求zfb服务失败")
-	ErrRequestAliPay          = NewAppError(100004, "请求zfb支付服务失败")
+	ErrRequestExternalService = NewAppError(100000, "服务请求失败，请稍后重试")
+	ErrRequestWechat          = NewAppError(100001, "微信服务请求失败")
+	ErrRequestWechatPay       = NewAppError(100002, "微信支付请求失败")
+	ErrRequestAli             = NewAppError(100003, "支付宝服务请求失败")
+	ErrRequestAliPay          = NewAppError(100004, "支付宝支付请求失败")
 
 	// 400xxx 客户端错误
 	ErrBadRequest         = NewAppError(400000, "请求错误")
 	ErrInvalidParam       = NewAppError(400001, "请求参数错误")
-	ErrTokenClientInvalid = NewAppError(400002, "token验证失败")
-	ErrTokenServerInvalid = NewAppError(400003, "token生成失败")
+	ErrTokenClientInvalid = NewAppError(400002, "登陆凭证无效")
+	ErrTokenServerInvalid = NewAppError(400003, "登陆凭证生成失败")
 
 	// 401xxx 未授权
-	ErrUnauthorized = NewAppError(401000, "用户未登录或token已失效")
+	ErrUnauthorized = NewAppError(401000, "请先登录")
 
 	// 403xxx 禁止操作
 	ErrForbiddenAuth = NewAppError(403000, "权限不足")
@@ -69,16 +69,16 @@ var (
 
 	// 409xxx 数据已存在
 	ErrDataExists          = NewAppError(409000, "数据已存在")
-	ErrUniqueIndexConflict = NewAppError(409001, "索引冲突")
+	ErrUniqueIndexConflict = NewAppError(409001, "数据已存在")
 
 	// 5xxxxx 服务器错误
-	ErrServerBusy = NewAppError(500000, "服务器繁忙")
-	ErrDatabase   = NewAppError(500001, "数据库错误")
-	ErrRedis      = NewAppError(500002, "redis错误")
+	ErrServerBusy = NewAppError(500000, "服务繁忙，请稍后重试")
+	ErrDatabase   = NewAppError(500001, "服务异常，请稍后重试")
+	ErrRedis      = NewAppError(500002, "服务异常，请稍后重试")
 
-	ErrEncrypt = NewAppError(600000, "加密错误")
+	ErrEncrypt = NewAppError(600000, "数据处理失败")
 
-	ErrOther = NewAppError(999999, "其他错误")
+	ErrOther = NewAppError(999999, "操作失败，请稍后重试")
 
 	// ... 可以继续添加其他预定义错误
 )
@@ -86,26 +86,26 @@ var (
 func RespCodeDescMap() map[int]string {
 	return map[int]string{
 		200:    "请求成功",
-		100000: "请求外部服务失败",
-		100001: "请求wechat服务失败",
-		100002: "请求wechat支付服务失败",
-		100003: "请求zfb服务失败",
-		100004: "请求zfb支付服务失败",
+		100000: "服务请求失败，请稍后重试",
+		100001: "微信服务请求失败",
+		100002: "微信支付请求失败",
+		100003: "支付宝服务请求失败",
+		100004: "支付宝支付请求失败",
 		400000: "请求错误",
 		400001: "请求参数错误",
-		400002: "token验证失败",
-		400003: "token生成失败",
-		401000: "用户未登录或token已失效",
+		400002: "登陆凭证无效",
+		400003: "登陆凭证生成失败",
+		401000: "请先登录",
 		403000: "权限不足",
 		403001: "用户不存在或已被禁用",
 		404000: "数据不存在",
 		409000: "数据已存在",
-		409001: "索引冲突",
-		500000: "服务器繁忙",
-		500001: "数据库错误",
-		500002: "redis错误",
-		600000: "加密错误",
-		999999: "其他错误",
+		409001: "数据已存在",
+		500000: "服务繁忙，请稍后重试",
+		500001: "服务异常，请稍后重试",
+		500002: "服务异常，请稍后重试",
+		600000: "数据处理失败",
+		999999: "操作失败，请稍后重试",
 	}
 }
 
@@ -192,7 +192,7 @@ func ReturnErrDatabase(err error, msg string, notfoundMsg ...string) *AppError {
 // ConvertToAppError 把任意错误转换成统一的业务错误模型。
 func ConvertToAppError(err error) *AppError {
 	if err == nil {
-		return ErrServerBusy.WithMessage("未知错误")
+		return ErrServerBusy.WithMessage("服务异常，请稍后重试")
 	}
 
 	var appErr *AppError
@@ -209,11 +209,11 @@ func ConvertToAppError(err error) *AppError {
 	case ErrRecordNotFound(err):
 		return ErrNotFound.WithMessage("数据不存在")
 	case ErrDuplicatedKey(err):
-		return ErrDataExists.WithMessage("数据冲突")
+		return ErrDataExists.WithMessage("数据已存在")
 	case ErrInvalidField(err):
-		return ErrDatabase.WithMessage("字段无效")
+		return ErrDatabase.WithMessage("数据处理失败，请检查输入")
 	case ErrInvalidTransaction(err):
-		return ErrDatabase.WithMessage("数据库事务错误")
+		return ErrDatabase.WithMessage("服务异常，请稍后重试")
 	}
 
 	// 处理mysql特定错误

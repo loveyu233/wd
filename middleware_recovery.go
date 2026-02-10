@@ -19,7 +19,7 @@ func MiddlewareRecovery(log ...func(recoverErr any, debugStack []byte)) gin.Hand
 				if isFunc {
 					log[0](err, debug.Stack())
 				}
-				ResponseError(c, ErrServerBusy.WithMessage("panic:%v", err))
+				ResponseError(c, ErrServerBusy.WithMessage("服务异常，请稍后重试"))
 				c.AbortWithStatus(http.StatusOK)
 			}
 		}()

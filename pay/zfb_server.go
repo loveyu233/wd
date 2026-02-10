@@ -256,7 +256,7 @@ func (a *ZFBClient) login(c *gin.Context) {
 
 	session, err := a.SystemOauthToken(params.Code)
 	if err != nil || session.OpenId == "" {
-		wd.ResponseError(c, wd.ErrRequestAli.WithMessage("获取支付宝小程序用户会话代码失败"))
+		wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝登录失败，请重试"))
 		return
 	}
 
@@ -268,7 +268,7 @@ func (a *ZFBClient) login(c *gin.Context) {
 	//检测用户是否注册
 	user, exists, err = a.zfbMiniImp.IsExistsUser(session.UnionId)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrDatabase.WithMessage("查询用户信息失败:%s", err.Error()))
+		wd.ResponseError(c, wd.ErrDatabase.WithMessage("用户信息查询失败，请稍后重试"))
 		return
 	}
 	if !exists {
@@ -280,23 +280,23 @@ func (a *ZFBClient) login(c *gin.Context) {
 		}
 		decryption, err := a.MobilePhoneNumberDecryption(params.EncryptedData)
 		if err != nil {
-			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("获取支付宝小程序用户数据失败"))
+			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝授权失败，请重试"))
 		}
 
 		if decryption == nil {
-			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("获取支付宝小程序用户数据失败"))
+			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝授权失败，请重试"))
 			return
 		}
 
 		if user, err = a.zfbMiniImp.CreateUser(decryption.Mobile, session.UnionId, session.OpenId, c.ClientIP()); err != nil {
-			wd.ResponseError(c, wd.ErrDatabase.WithMessage("创建用户信息失败:%s", err.Error()))
+			wd.ResponseError(c, wd.ErrDatabase.WithMessage("注册失败，请稍后重试"))
 			return
 		}
 	}
 
 	data, err := a.zfbMiniImp.GenerateToken(user, session.OpenId)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("token生成失败:%s", err.Error()))
+		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("登录失败，请稍后重试"))
 		return
 	}
 	switch data.(type) {
