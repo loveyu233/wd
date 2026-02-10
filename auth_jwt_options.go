@@ -46,12 +46,6 @@ func WithJWTIdentityKey(key string) JWTOption {
 
 // ── 回调 ──────────────────────────────────────────────────────
 
-// WithJWTIdentityHandler 设置身份处理函数：提取身份并判断是否放行。
-// 返回 (identity, nil) 表示放行，返回 (nil, error) 表示拒绝。
-func WithJWTIdentityHandler(fn func(c *gin.Context) (interface{}, error)) JWTOption {
-	return func(mw *GinJWTMiddleware) { mw.IdentityHandler = fn }
-}
-
 // ── 响应回调 ──────────────────────────────────────────────────
 
 // WithJWTUnauthorized 设置未授权响应回调。

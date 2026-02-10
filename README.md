@@ -42,6 +42,12 @@ type loginReq struct {
     Password string `json:"password" binding:"required"`
 }
 
+// accountPayload 定义 JWT Claims 的负载结构，字段名对应 JSON key。
+type accountPayload struct {
+    Username string `json:"username"`
+    LoginAt  int64  `json:"login_at"`
+}
+
 var users = map[string]string{
     "alice": "123456",
     "bob":   "654321",
@@ -60,12 +66,16 @@ func main() {
             }
             return &account{Username: req.Username}, nil
         },
-        // payloadFunc: 直接接收 *account，无需类型断言
-        func(data *account) wd.MapClaims {
-            return wd.MapClaims{
-                "username": data.Username,
-                "login_at": time.Now().Unix(),
+        // payloadFunc: 返回负载结构体，自动序列化为 JWT Claims
+        func(data *account) accountPayload {
+            return accountPayload{
+                Username: data.Username,
+                LoginAt:  time.Now().Unix(),
             }
+        },
+        // identityHandler: 直接使用结构体字段，无需从 map 中读取
+        func(c *gin.Context, payload accountPayload) (any, error) {
+            return payload.Username, nil
         },
         wd.WithJWTRealm("demo zone"),
         wd.WithJWTKey([]byte("change-me")),

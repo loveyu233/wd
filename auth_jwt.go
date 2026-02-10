@@ -159,11 +159,13 @@ type GinJWTMiddleware struct {
 type JWTOption func(*GinJWTMiddleware)
 
 // NewGinJWTMiddleware 使用泛型创建并初始化 GinJWTMiddleware。
-// authenticator 用于验证用户身份，payloadFunc 用于将用户数据写入 JWT Claims。
-// T 由 authenticator 和 payloadFunc 的签名自动推断，无需手动指定。
-func NewGinJWTMiddleware[T any](
+// T 为 authenticator 返回的用户类型，P 为 JWT Claims 的负载结构体类型。
+// payloadFunc 将 T 转为 P 写入 Claims，identityHandler 从 Claims 反序列化出 P 供读取。
+// T 和 P 由函数签名自动推断，无需手动指定。
+func NewGinJWTMiddleware[T any, P any](
 	authenticator func(c *gin.Context) (T, error),
-	payloadFunc func(data T) MapClaims,
+	payloadFunc func(data T) P,
+	identityHandler func(c *gin.Context, payload P) (any, error),
 	opts ...JWTOption,
 ) (*GinJWTMiddleware, error) {
 	mw := &GinJWTMiddleware{}
@@ -171,7 +173,28 @@ func NewGinJWTMiddleware[T any](
 		return authenticator(c)
 	}
 	mw.PayloadFunc = func(data any) MapClaims {
-		return payloadFunc(data.(T))
+		p := payloadFunc(data.(T))
+		b, err := json.Marshal(p)
+		if err != nil {
+			return MapClaims{}
+		}
+		var claims MapClaims
+		_ = json.Unmarshal(b, &claims)
+		return claims
+	}
+	if identityHandler != nil {
+		mw.IdentityHandler = func(c *gin.Context) (any, error) {
+			claims := ExtractClaims(c)
+			b, err := json.Marshal(claims)
+			if err != nil {
+				return nil, err
+			}
+			var payload P
+			if err := json.Unmarshal(b, &payload); err != nil {
+				return nil, err
+			}
+			return identityHandler(c, payload)
+		}
 	}
 	for _, opt := range opts {
 		opt(mw)
