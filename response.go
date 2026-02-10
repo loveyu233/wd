@@ -109,69 +109,69 @@ func RespCodeDescMap() map[int]string {
 	}
 }
 
-func MsgErrRequestExternalService(msg string, args ...any) *AppError {
-	return ErrRequestExternalService.WithMessage(msg, args...)
+func MsgErrRequestExternalService(err error) *AppError {
+	return ErrRequestExternalService.WithMessage(err.Error())
 }
-func MsgErrRequestWechat(msg string, args ...any) *AppError {
-	return ErrRequestWechat.WithMessage(msg, args...)
+func MsgErrRequestWechat(err error) *AppError {
+	return ErrRequestWechat.WithMessage(err.Error())
 }
-func MsgErrRequestWechatPay(msg string, args ...any) *AppError {
-	return ErrRequestWechatPay.WithMessage(msg, args...)
+func MsgErrRequestWechatPay(err error) *AppError {
+	return ErrRequestWechatPay.WithMessage(err.Error())
 }
-func MsgErrRequestAli(msg string, args ...any) *AppError {
-	return ErrRequestAli.WithMessage(msg, args...)
+func MsgErrRequestAli(err error) *AppError {
+	return ErrRequestAli.WithMessage(err.Error())
 }
-func MsgErrRequestAliPay(msg string, args ...any) *AppError {
-	return ErrRequestAliPay.WithMessage(msg, args...)
-}
-
-func MsgErrBadRequest(msg string, args ...any) *AppError {
-	return ErrBadRequest.WithMessage(msg, args...)
-}
-func MsgErrInvalidParam(msg string, args ...any) *AppError {
-	return ErrInvalidParam.WithMessage(msg, args...)
-}
-func MsgErrTokenClientInvalid(msg string, args ...any) *AppError {
-	return ErrTokenClientInvalid.WithMessage(msg, args...)
-}
-func MsgErrTokenServerInvalid(msg string, args ...any) *AppError {
-	return ErrTokenServerInvalid.WithMessage(msg, args...)
+func MsgErrRequestAliPay(err error) *AppError {
+	return ErrRequestAliPay.WithMessage(err.Error())
 }
 
-func MsgErrUnauthorized(msg string, args ...any) *AppError {
-	return ErrUnauthorized.WithMessage(msg, args...)
+func MsgErrBadRequest(err error) *AppError {
+	return ErrBadRequest.WithMessage(err.Error())
+}
+func MsgErrInvalidParam(err error) *AppError {
+	return ErrInvalidParam.WithMessage(TranslateError(err).Error())
+}
+func MsgErrTokenClientInvalid(err error) *AppError {
+	return ErrTokenClientInvalid.WithMessage(err.Error())
+}
+func MsgErrTokenServerInvalid(err error) *AppError {
+	return ErrTokenServerInvalid.WithMessage(err.Error())
 }
 
-func MsgErrForbiddenAuth(msg string, args ...any) *AppError {
-	return ErrForbiddenAuth.WithMessage(msg, args...)
-}
-func MsgErrUserDisabled(msg string, args ...any) *AppError {
-	return ErrUserDisabled.WithMessage(msg, args...)
+func MsgErrUnauthorized(err error) *AppError {
+	return ErrUnauthorized.WithMessage(err.Error())
 }
 
-func MsgErrNotFound(msg string, args ...any) *AppError {
-	return ErrNotFound.WithMessage(msg, args...)
+func MsgErrForbiddenAuth(err error) *AppError {
+	return ErrForbiddenAuth.WithMessage(err.Error())
+}
+func MsgErrUserDisabled(err error) *AppError {
+	return ErrUserDisabled.WithMessage(err.Error())
 }
 
-func MsgErrDataExists(msg string, args ...any) *AppError {
-	return ErrDataExists.WithMessage(msg, args...)
-}
-func MsgErrUniqueIndexConflict(msg string, args ...any) *AppError {
-	return ErrUniqueIndexConflict.WithMessage(msg, args...)
+func MsgErrNotFound(err error) *AppError {
+	return ErrNotFound.WithMessage(err.Error())
 }
 
-func MsgErrServerBusy(msg string, args ...any) *AppError {
-	return ErrServerBusy.WithMessage(msg, args...)
+func MsgErrDataExists(err error) *AppError {
+	return ErrDataExists.WithMessage(err.Error())
 }
-func MsgErrDatabase(msg string, args ...any) *AppError {
-	return ErrDatabase.WithMessage(msg, args...)
-}
-func MsgErrRedis(msg string, args ...any) *AppError {
-	return ErrRedis.WithMessage(msg, args...)
+func MsgErrUniqueIndexConflict(err error) *AppError {
+	return ErrUniqueIndexConflict.WithMessage(err.Error())
 }
 
-func MsgEncryptErr(msg string, args ...any) *AppError {
-	return ErrEncrypt.WithMessage(msg, args...)
+func MsgErrServerBusy(err error) *AppError {
+	return ErrServerBusy.WithMessage(err.Error())
+}
+func MsgErrDatabase(err error) *AppError {
+	return ErrDatabase.WithMessage(err.Error())
+}
+func MsgErrRedis(err error) *AppError {
+	return ErrRedis.WithMessage(err.Error())
+}
+
+func MsgEncryptErr(err error) *AppError {
+	return ErrEncrypt.WithMessage(err.Error())
 }
 
 func ErrIsAppErr(err error, appErr *AppError) bool {

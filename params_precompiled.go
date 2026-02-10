@@ -58,11 +58,11 @@ func (req *ReqDateTimeStartEnd) parse() error {
 	var err error
 	req.startDateTime, err = parseOptional(req.StartDateTime, ParseDateTimeValue)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.endDateTime, err = parseOptional(req.EndDateTime, ParseDateTimeValue)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.isParse = true
 
@@ -113,7 +113,7 @@ func (req *ReqDateTime) parse() error {
 	if req.DateTime != "" {
 		s, err := ParseDateTimeValue(req.DateTime)
 		if err != nil {
-			return MsgErrInvalidParam(err.Error())
+			return MsgErrInvalidParam(err)
 		}
 		req.dateTime = s
 	}
@@ -181,11 +181,11 @@ func (req *ReqDateStartEnd) parse() error {
 	var err error
 	req.startDate, err = parseOptional(req.StartDate, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.endDate, err = parseOptional(req.EndDate, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.isParse = true
 	return nil
@@ -234,7 +234,7 @@ func (req *ReqDate) parse() error {
 	var err error
 	req.date, err = parseOptional(req.Date, ParseDateOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.isParse = true
 	return nil
@@ -299,7 +299,7 @@ func (req *ReqTimeStartEnd) parse() error {
 	var err error
 	req.startTime, err = parseOptional(req.StartTime, ParseTimeOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.endTime, err = parseOptional(req.EndTime, ParseTimeOnly)
 	req.isParse = true
@@ -350,7 +350,7 @@ func (req *ReqTime) parse() error {
 	var err error
 	req.time, err = parseOptional(req.Time, ParseTimeOnly)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.isParse = true
 	return nil
@@ -415,7 +415,7 @@ func (req *ReqTimeHourMinuteStartEnd) parse() error {
 	var err error
 	req.startTimeHourMinute, err = parseOptional(req.StartTimeHourMinute, ParseHourMinute)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.endTimeHourMinute, err = parseOptional(req.EndTimeHourMinute, ParseHourMinute)
 	if err != nil {
@@ -469,7 +469,7 @@ func (req *ReqTimeHourMinute) parse() error {
 	var err error
 	req.timeHourMinute, err = parseOptional(req.TimeHourMinute, ParseHourMinute)
 	if err != nil {
-		return MsgErrInvalidParam(err.Error())
+		return MsgErrInvalidParam(err)
 	}
 	req.isParse = true
 	return nil
@@ -653,7 +653,7 @@ func (r *ReqFile) parse() error {
 	var err error
 	r.file, err = r.File.Open()
 	if err != nil {
-		return MsgErrDataExists(err.Error())
+		return MsgErrDataExists(err)
 	}
 	r.isParse = true
 	return nil
@@ -671,7 +671,7 @@ func (r *ReqFile) FileContent() ([]byte, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return nil, MsgErrDataExists(err.Error())
+		return nil, MsgErrDataExists(err)
 	}
 	return r.fileBytes, nil
 }
@@ -689,7 +689,7 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return "", MsgErrDataExists(err.Error())
+		return "", MsgErrDataExists(err)
 	}
 	r.isRead = true
 	return GetFileContentType(r.fileBytes), nil
@@ -697,14 +697,14 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 
 func (r *ReqFile) GetFileNameType() (string, error) {
 	if !r.Enable() {
-		return "", MsgErrNotFound("文件不存在")
+		return "", ErrNotFound.WithMessage("文件不存在")
 	}
 	return GetFileNameType(r.File.Filename), nil
 }
 
 func (r *ReqFile) GetFileSize() (int64, error) {
 	if !r.Enable() {
-		return 0, MsgErrNotFound("文件不存在")
+		return 0, ErrNotFound.WithMessage("文件不存在")
 	}
 	return r.File.Size, nil
 }
@@ -717,5 +717,5 @@ func (r *ReqFile) UploadFile(ctx context.Context, uploadFileFunc func(file *mult
 	if v, ok := urls[r.File.Filename]; ok {
 		return v, nil
 	}
-	return "", MsgErrRequestExternalService("上传文件失败")
+	return "", ErrRequestExternalService.WithMessage("上传文件失败")
 }

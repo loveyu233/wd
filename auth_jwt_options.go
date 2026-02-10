@@ -51,18 +51,14 @@ func WithJWTAuthenticator(fn func(c *gin.Context) (interface{}, error)) JWTOptio
 	return func(mw *GinJWTMiddleware) { mw.Authenticator = fn }
 }
 
-// WithJWTAuthorizator 设置已认证用户的授权回调。
-func WithJWTAuthorizator(fn func(data interface{}, c *gin.Context) bool) JWTOption {
-	return func(mw *GinJWTMiddleware) { mw.Authorizator = fn }
-}
-
 // WithJWTPayloadFunc 设置自定义有效载荷回调。
 func WithJWTPayloadFunc(fn func(data interface{}) MapClaims) JWTOption {
 	return func(mw *GinJWTMiddleware) { mw.PayloadFunc = fn }
 }
 
-// WithJWTIdentityHandler 设置身份处理函数。
-func WithJWTIdentityHandler(fn func(c *gin.Context) interface{}) JWTOption {
+// WithJWTIdentityHandler 设置身份处理函数：提取身份并判断是否放行。
+// 返回 (identity, nil) 表示放行，返回 (nil, error) 表示拒绝。
+func WithJWTIdentityHandler(fn func(c *gin.Context) (interface{}, error)) JWTOption {
 	return func(mw *GinJWTMiddleware) { mw.IdentityHandler = fn }
 }
 

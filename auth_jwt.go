@@ -82,10 +82,10 @@ type GinJWTMiddleware struct {
 	// 检查错误 (e) 以确定适当的错误消息。
 	Authenticator func(c *gin.Context) (interface{}, error)
 
-	// 回调函数，应执行已认证用户的授权。
-	// 仅在身份验证成功后调用。成功时必须返回 true，失败时返回 false。
-	// 可选，默认为成功。
-	Authorizator func(data interface{}, c *gin.Context) bool
+	// 身份处理函数：从 JWT Claims 中提取身份并判断是否放行。
+	// 返回 (identity, nil) 表示放行，返回 (nil, error) 表示拒绝。
+	// 可选，默认从 claims 中按 IdentityKey 提取身份并放行。
+	IdentityHandler func(c *gin.Context) (interface{}, error)
 
 	// 在登录期间将被调用的回调函数。
 	// 使用此函数可以向 webtoken 添加其他有效负载数据。
@@ -106,9 +106,6 @@ type GinJWTMiddleware struct {
 
 	// 用户可以定义自己的刷新响应函数。
 	RefreshResponse func(c *gin.Context, code int, message string, time time.Time)
-
-	// 设置身份处理函数，默认使用 IdentityKey
-	IdentityHandler func(c *gin.Context) interface{}
 
 	// 设置身份键
 	IdentityKey string
@@ -191,14 +188,14 @@ func (mw *GinJWTMiddleware) privateKey() error {
 	} else {
 		filecontent, err := os.ReadFile(mw.RSA.PrivKeyFile)
 		if err != nil {
-			return MsgErrTokenServerInvalid("私钥文件读取失败")
+			return MsgErrTokenServerInvalid(err)
 		}
 		keyData = filecontent
 	}
 
 	key, err := jwt.ParseRSAPrivateKeyFromPEM(keyData)
 	if err != nil {
-		return MsgErrTokenServerInvalid("私钥无效")
+		return MsgErrTokenServerInvalid(err)
 	}
 	mw.privKey = key
 	return nil
@@ -212,14 +209,14 @@ func (mw *GinJWTMiddleware) publicKey() error {
 	} else {
 		filecontent, err := os.ReadFile(mw.RSA.PubKeyFile)
 		if err != nil {
-			return MsgErrTokenServerInvalid("公钥文件读取失败")
+			return MsgErrTokenServerInvalid(err)
 		}
 		keyData = filecontent
 	}
 
 	key, err := jwt.ParseRSAPublicKeyFromPEM(keyData)
 	if err != nil {
-		return MsgErrTokenServerInvalid("公钥无效")
+		return MsgErrTokenServerInvalid(err)
 	}
 	mw.pubKey = key
 	return nil
@@ -263,15 +260,9 @@ func (mw *GinJWTMiddleware) init() error {
 		mw.TokenHeadName = "Bearer"
 	}
 
-	if mw.Authorizator == nil {
-		mw.Authorizator = func(data interface{}, c *gin.Context) bool {
-			return true
-		}
-	}
-
 	if mw.Unauthorized == nil {
 		mw.Unauthorized = func(c *gin.Context, code int, message string) {
-			ResponseError(c, MsgErrUnauthorized(message))
+			ResponseError(c, ErrUnauthorized.WithMessage(message))
 		}
 	}
 
@@ -280,7 +271,7 @@ func (mw *GinJWTMiddleware) init() error {
 			if code == http.StatusOK {
 				ResponseSuccessToken(c, token)
 			} else {
-				ResponseError(c, MsgErrInvalidParam("登录失败"))
+				ResponseError(c, ErrInvalidParam.WithMessage("登录失败"))
 			}
 		}
 	}
@@ -290,7 +281,7 @@ func (mw *GinJWTMiddleware) init() error {
 			if code == http.StatusOK {
 				ResponseSuccessMsg(c, "操作成功")
 			} else {
-				ResponseError(c, MsgErrServerBusy("操作失败"))
+				ResponseError(c, ErrServerBusy.WithMessage("操作失败"))
 			}
 		}
 	}
@@ -310,9 +301,9 @@ func (mw *GinJWTMiddleware) init() error {
 	}
 
 	if mw.IdentityHandler == nil {
-		mw.IdentityHandler = func(c *gin.Context) interface{} {
+		mw.IdentityHandler = func(c *gin.Context) (interface{}, error) {
 			claims := ExtractClaims(c)
-			return claims[mw.IdentityKey]
+			return claims[mw.IdentityKey], nil
 		}
 	}
 
@@ -346,7 +337,7 @@ func (mw *GinJWTMiddleware) init() error {
 	}
 
 	if mw.Key == nil {
-		return MsgErrTokenServerInvalid("密钥不能为空")
+		return ErrTokenServerInvalid.WithMessage("密钥不能为空")
 	}
 	return nil
 }
@@ -365,11 +356,11 @@ func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 		var appErr *AppError
 		switch {
 		case errors.Is(err, jwt.ErrTokenExpired):
-			appErr = MsgErrTokenServerInvalid("令牌已过期")
+			appErr = ErrTokenServerInvalid.WithMessage("登陆过期请重新登录")
 		case errors.Is(err, jwt.ErrTokenMalformed):
-			appErr = MsgErrTokenServerInvalid("令牌格式错误")
+			appErr = ErrTokenServerInvalid.WithMessage("登陆失败请重新登录")
 		default:
-			appErr = MsgErrTokenServerInvalid("令牌异常")
+			appErr = ErrTokenServerInvalid.WithMessage("登陆状态异常请重新登录")
 		}
 		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
@@ -377,43 +368,42 @@ func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 
 	switch v := claims["exp"].(type) {
 	case nil:
-		appErr := MsgErrTokenServerInvalid("令牌异常")
+		appErr := ErrTokenServerInvalid.WithMessage("登陆状态异常请重新登录")
 		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
 	case float64:
 		if int64(v) < mw.TimeFunc().Unix() {
-			appErr := MsgErrTokenServerInvalid("令牌已过期")
+			appErr := ErrTokenServerInvalid.WithMessage("登陆过期请重新登录")
 			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 	case json.Number:
 		n, err := v.Int64()
 		if err != nil {
-			appErr := MsgErrTokenServerInvalid("令牌格式错误")
+			appErr := ErrTokenServerInvalid.WithMessage("登陆失败请重新登录")
 			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 		if n < mw.TimeFunc().Unix() {
-			appErr := MsgErrTokenServerInvalid("令牌已过期")
+			appErr := ErrTokenServerInvalid.WithMessage("登陆状态异常请重新登录")
 			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
 	default:
-		appErr := MsgErrTokenServerInvalid("令牌格式错误")
+		appErr := ErrTokenServerInvalid.WithMessage("登陆失败请重新登录")
 		mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 		return
 	}
 
 	c.Set(CtxKeyJWTPayload, claims)
-	identity := mw.IdentityHandler(c)
+	identity, err := mw.IdentityHandler(c)
+	if err != nil {
+		mw.unauthorized(c, ErrForbiddenAuth.Code, mw.HTTPStatusMessageFunc(err, c))
+		return
+	}
 
 	if identity != nil {
 		c.Set(mw.IdentityKey, identity)
-	}
-
-	if !mw.Authorizator(identity, c) {
-		mw.unauthorized(c, ErrForbiddenAuth.Code, mw.HTTPStatusMessageFunc(ErrForbiddenAuth, c))
-		return
 	}
 
 	c.Next()
@@ -444,14 +434,14 @@ func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) 
 func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if mw.Authenticator == nil {
-			appError := MsgErrTokenServerInvalid("缺少必要的函数定义")
+			appError := ErrTokenServerInvalid.WithMessage("缺少必要的函数定义")
 			mw.unauthorized(c, appError.Code, mw.HTTPStatusMessageFunc(appError, c))
 			return
 		}
 
-		data, err := mw.Authenticator(c)
-		if err != nil {
-			ResponseError(c, err)
+		data, apperr := mw.Authenticator(c)
+		if apperr != nil {
+			ResponseError(c, apperr)
 			c.Abort()
 			return
 		}
@@ -476,7 +466,7 @@ func (mw *GinJWTMiddleware) LoginHandler() gin.HandlerFunc {
 		claims["orig_iat"] = mw.TimeFunc().Unix()
 		tokenString, err := mw.signedString(token)
 		if err != nil {
-			appError := MsgErrTokenServerInvalid("创建令牌失败")
+			appError := ErrTokenServerInvalid.WithMessage("创建登陆凭证失败")
 			mw.unauthorized(c, appError.Code, mw.HTTPStatusMessageFunc(appError, c))
 			return
 		}
@@ -523,7 +513,7 @@ func (mw *GinJWTMiddleware) RefreshHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, expire, err := mw.RefreshToken(c)
 		if err != nil {
-			appErr := MsgErrTokenServerInvalid(err.Error())
+			appErr := MsgErrTokenServerInvalid(err)
 			mw.unauthorized(c, appErr.Code, mw.HTTPStatusMessageFunc(appErr, c))
 			return
 		}
@@ -575,7 +565,7 @@ func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, e
 		return nil, err
 	}
 	if !token.Valid {
-		return nil, MsgErrTokenClientInvalid("令牌无效")
+		return nil, ErrTokenClientInvalid.WithMessage("登陆失败请重新登录")
 	}
 
 	claims := token.Claims.(jwt.MapClaims)
@@ -583,7 +573,7 @@ func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, e
 	origIat := int64(claims["orig_iat"].(float64))
 
 	if origIat < mw.TimeFunc().Add(-mw.MaxRefresh).Unix() {
-		return nil, MsgErrTokenClientInvalid("令牌已过期")
+		return nil, ErrTokenClientInvalid.WithMessage("登陆过期请重新登录")
 	}
 
 	return claims, nil
@@ -621,13 +611,13 @@ func (mw *GinJWTMiddleware) jwtFromHeader(c *gin.Context, key string) (string, e
 	authHeader := c.GetHeader(key)
 
 	if authHeader == "" {
-		return "", MsgErrTokenClientInvalid("认证头为空")
+		return "", ErrTokenClientInvalid.WithMessage("认证失败请重新登录")
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if !((len(parts) == 1 && mw.WithoutDefaultTokenHeadName && mw.TokenHeadName == "") ||
 		(len(parts) == 2 && parts[0] == mw.TokenHeadName)) {
-		return "", MsgErrTokenClientInvalid("认证头无效")
+		return "", ErrTokenClientInvalid.WithMessage("认证无效请重新登录")
 	}
 
 	return parts[len(parts)-1], nil
@@ -638,7 +628,7 @@ func (mw *GinJWTMiddleware) jwtFromQuery(c *gin.Context, key string) (string, er
 	token := c.Query(key)
 
 	if token == "" {
-		return "", MsgErrTokenClientInvalid("令牌为空")
+		return "", ErrTokenClientInvalid.WithMessage("认证失败请重新登录")
 	}
 
 	return token, nil
@@ -648,11 +638,11 @@ func (mw *GinJWTMiddleware) jwtFromQuery(c *gin.Context, key string) (string, er
 func (mw *GinJWTMiddleware) jwtFromCookie(c *gin.Context, key string) (string, error) {
 	cookie, err := c.Cookie(key)
 	if err != nil {
-		return "", MsgErrTokenClientInvalid("令牌为空")
+		return "", ErrTokenClientInvalid.WithMessage("认证失败请重新登录")
 	}
 
 	if cookie == "" {
-		return "", MsgErrTokenClientInvalid("令牌为空")
+		return "", ErrTokenClientInvalid.WithMessage("认证失败请重新登录")
 	}
 
 	return cookie, nil
@@ -663,7 +653,7 @@ func (mw *GinJWTMiddleware) jwtFromParam(c *gin.Context, key string) (string, er
 	token := c.Param(key)
 
 	if token == "" {
-		return "", MsgErrTokenClientInvalid("令牌为空")
+		return "", ErrTokenClientInvalid.WithMessage("请先登陆")
 	}
 
 	return token, nil
@@ -674,7 +664,7 @@ func (mw *GinJWTMiddleware) jwtFromForm(c *gin.Context, key string) (string, err
 	token := c.PostForm(key)
 
 	if token == "" {
-		return "", MsgErrTokenClientInvalid("令牌为空")
+		return "", ErrTokenClientInvalid.WithMessage("认证失败请重新登录")
 	}
 
 	return token, nil
@@ -717,7 +707,7 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 
 	return jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if jwt.GetSigningMethod(mw.SigningAlgorithm) != t.Method {
-			return nil, MsgErrTokenClientInvalid("无效的签名算法")
+			return nil, ErrTokenClientInvalid.WithMessage("登陆凭证校验失败请重新登录")
 		}
 		if mw.usingPublicKeyAlgo() {
 			return mw.pubKey, nil
@@ -738,7 +728,7 @@ func (mw *GinJWTMiddleware) ParseTokenString(token string) (*jwt.Token, error) {
 
 	return jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if jwt.GetSigningMethod(mw.SigningAlgorithm) != t.Method {
-			return nil, MsgErrTokenClientInvalid("无效的签名算法")
+			return nil, ErrTokenClientInvalid.WithMessage("无效凭证请重新登录")
 		}
 		if mw.usingPublicKeyAlgo() {
 			return mw.pubKey, nil
