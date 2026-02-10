@@ -28,12 +28,12 @@ func (wx *WXPay) RegisterHandlers(r *gin.RouterGroup) {
 func (wx *WXPay) pay(c *gin.Context) {
 	payRequest, err := wx.payHandler(c)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestWechatPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 		return
 	}
 	pay, err := wx.Pay(payRequest)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestWechatPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 		return
 	}
 
@@ -43,13 +43,13 @@ func (wx *WXPay) pay(c *gin.Context) {
 func (wx *WXPay) refund(c *gin.Context) {
 	refundRequest, err := wx.refundHandler(c)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestWechatPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 		return
 	}
 
 	refund, err := wx.Refund(refundRequest)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestWechatPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 	}
 
 	wd.ResponseSuccess(c, refund)

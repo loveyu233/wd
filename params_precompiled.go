@@ -648,12 +648,12 @@ func (r *ReqFile) Enable() bool {
 
 func (r *ReqFile) parse() error {
 	if !r.Enable() {
-		return ErrNotFound.WithMessage("文件不存在")
+		return MsgErrNotFound("文件不存在")
 	}
 	var err error
 	r.file, err = r.File.Open()
 	if err != nil {
-		return MsgErrDataExists(err)
+		return MsgErrDataExists("文件读取失败", err)
 	}
 	r.isParse = true
 	return nil
@@ -671,7 +671,7 @@ func (r *ReqFile) FileContent() ([]byte, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return nil, MsgErrDataExists(err)
+		return nil, MsgErrDataExists("文件读取失败", err)
 	}
 	return r.fileBytes, nil
 }
@@ -689,7 +689,7 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return "", MsgErrDataExists(err)
+		return "", MsgErrDataExists("文件读取失败", err)
 	}
 	r.isRead = true
 	return GetFileContentType(r.fileBytes), nil
@@ -697,14 +697,14 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 
 func (r *ReqFile) GetFileNameType() (string, error) {
 	if !r.Enable() {
-		return "", ErrNotFound.WithMessage("文件不存在")
+		return "", MsgErrNotFound("文件不存在")
 	}
 	return GetFileNameType(r.File.Filename), nil
 }
 
 func (r *ReqFile) GetFileSize() (int64, error) {
 	if !r.Enable() {
-		return 0, ErrNotFound.WithMessage("文件不存在")
+		return 0, MsgErrNotFound("文件不存在")
 	}
 	return r.File.Size, nil
 }
@@ -717,5 +717,5 @@ func (r *ReqFile) UploadFile(ctx context.Context, uploadFileFunc func(file *mult
 	if v, ok := urls[r.File.Filename]; ok {
 		return v, nil
 	}
-	return "", ErrRequestExternalService.WithMessage("上传文件失败")
+	return "", MsgErrRequestExternalService("上传文件失败")
 }

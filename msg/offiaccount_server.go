@@ -79,7 +79,7 @@ func (wx *WXOfficial) pushHand(c *gin.Context) {
 	users, message := wx.pushHandler(c)
 	_, err := wx.Push(users, message)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestWechat.WithMessage("消息推送失败，请稍后重试"))
+		wd.ResponseError(c, wd.MsgErrRequestWechat("消息推送失败，请稍后重试", err))
 		return
 	}
 	wd.ResponseSuccessMsg(c, "发送成功")

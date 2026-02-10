@@ -15,6 +15,7 @@ import (
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	E       error  `json:"e,omitempty"`
 }
 
 // Error 返回包含错误码和提示信息的字符串。
@@ -23,62 +24,65 @@ func (e *AppError) Error() string {
 }
 
 // WithMessage 创建一个携带自定义提示信息的新 AppError。
-func (e *AppError) WithMessage(format string, args ...any) *AppError {
-	if len(args) > 0 {
-		format = fmt.Sprintf(format, args...)
+func (e *AppError) WithMessage(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = e.Message
 	}
-	if format == "" {
-		format = e.Message
+	var newErr *AppError
+	if len(errs) > 0 {
+		newErr = NewAppError(e.Code, msg, e)
+	} else {
+		newErr = NewAppError(e.Code, msg, nil)
 	}
-	newErr := NewAppError(e.Code, format)
 	return newErr
 }
 
 // NewAppError 根据错误码和消息生成 AppError。
-func NewAppError(code int, message string) *AppError {
+func NewAppError(code int, message string, e error) *AppError {
 	return &AppError{
 		Code:    code,
 		Message: message,
+		E:       e,
 	}
 }
 
 // 预定义错误 http状态码 + 业务错误码
 var (
 	// 100xxx 请求外部服务失败
-	ErrRequestExternalService = NewAppError(100000, "服务请求失败，请稍后重试")
-	ErrRequestWechat          = NewAppError(100001, "微信服务请求失败")
-	ErrRequestWechatPay       = NewAppError(100002, "微信支付请求失败")
-	ErrRequestAli             = NewAppError(100003, "支付宝服务请求失败")
-	ErrRequestAliPay          = NewAppError(100004, "支付宝支付请求失败")
+	errRequestExternalService = NewAppError(100000, "服务请求失败，请稍后重试", nil)
+	errRequestWechat          = NewAppError(100001, "微信服务请求失败", nil)
+	errRequestWechatPay       = NewAppError(100002, "微信支付请求失败", nil)
+	errRequestAli             = NewAppError(100003, "支付宝服务请求失败", nil)
+	errRequestAliPay          = NewAppError(100004, "支付宝支付请求失败", nil)
 
 	// 400xxx 客户端错误
-	ErrBadRequest         = NewAppError(400000, "请求错误")
-	ErrInvalidParam       = NewAppError(400001, "请求参数错误")
-	ErrTokenClientInvalid = NewAppError(400002, "登陆凭证无效")
-	ErrTokenServerInvalid = NewAppError(400003, "登陆凭证生成失败")
+	errBadRequest         = NewAppError(400000, "请求错误", nil)
+	errInvalidParam       = NewAppError(400001, "请求参数错误", nil)
+	errTokenClientInvalid = NewAppError(400002, "登陆凭证无效", nil)
+	errTokenServerInvalid = NewAppError(400003, "登陆凭证生成失败", nil)
 
 	// 401xxx 未授权
-	ErrUnauthorized = NewAppError(401000, "请先登录")
+	errUnauthorized = NewAppError(401000, "请先登录", nil)
 
 	// 403xxx 禁止操作
-	ErrForbiddenAuth = NewAppError(403000, "权限不足")
-	ErrUserDisabled  = NewAppError(403001, "用户不存在或已被禁用")
+	errForbiddenAuth = NewAppError(403000, "权限不足", nil)
+	errUserDisabled  = NewAppError(403001, "用户不存在或已被禁用", nil)
 
 	// 404xxx 数据不存在
-	ErrNotFound = NewAppError(404000, "数据不存在")
+	errNotFound = NewAppError(404000, "数据不存在", nil)
 
 	// 409xxx 数据已存在
-	ErrDataExists          = NewAppError(409000, "数据已存在")
-	ErrUniqueIndexConflict = NewAppError(409001, "数据已存在")
+	errDataExists          = NewAppError(409000, "数据已存在", nil)
+	errUniqueIndexConflict = NewAppError(409001, "数据已存在", nil)
 
 	// 5xxxxx 服务器错误
-	ErrServerBusy = NewAppError(500000, "服务繁忙，请稍后重试")
-	ErrDatabase   = NewAppError(500001, "服务异常，请稍后重试")
-	ErrRedis      = NewAppError(500002, "服务异常，请稍后重试")
+	errServerBusy = NewAppError(500000, "服务繁忙，请稍后重试", nil)
+	errDatabase   = NewAppError(500001, "服务异常，请稍后重试", nil)
+	errRedis      = NewAppError(500002, "服务异常，请稍后重试", nil)
 
-	ErrEncrypt = NewAppError(600000, "数据处理失败")
+	errEncrypt = NewAppError(600000, "数据处理失败", nil)
 
-	ErrOther = NewAppError(999999, "操作失败，请稍后重试")
+	errOther = NewAppError(999999, "操作失败，请稍后重试", nil)
 
 	// ... 可以继续添加其他预定义错误
 )
@@ -109,69 +113,130 @@ func RespCodeDescMap() map[int]string {
 	}
 }
 
-func MsgErrRequestExternalService(err error) *AppError {
-	return ErrRequestExternalService.WithMessage(err.Error())
+func MsgErrRequestExternalService(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRequestExternalService.Message
+	}
+	return errRequestExternalService.WithMessage(msg, errs...)
 }
-func MsgErrRequestWechat(err error) *AppError {
-	return ErrRequestWechat.WithMessage(err.Error())
+func MsgErrRequestWechat(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRequestWechat.Message
+	}
+	return errRequestWechat.WithMessage(msg, errs...)
 }
-func MsgErrRequestWechatPay(err error) *AppError {
-	return ErrRequestWechatPay.WithMessage(err.Error())
+func MsgErrRequestWechatPay(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRequestWechatPay.Message
+	}
+	return errRequestWechatPay.WithMessage(msg, errs...)
 }
-func MsgErrRequestAli(err error) *AppError {
-	return ErrRequestAli.WithMessage(err.Error())
+func MsgErrRequestAli(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRequestAli.Message
+	}
+	return errRequestAli.WithMessage(msg, errs...)
 }
-func MsgErrRequestAliPay(err error) *AppError {
-	return ErrRequestAliPay.WithMessage(err.Error())
+func MsgErrRequestAliPay(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRequestAliPay.Message
+	}
+	return errRequestAliPay.WithMessage(msg, errs...)
 }
 
-func MsgErrBadRequest(err error) *AppError {
-	return ErrBadRequest.WithMessage(err.Error())
+func MsgErrBadRequest(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errBadRequest.Message
+	}
+	return errBadRequest.WithMessage(msg, errs...)
 }
 func MsgErrInvalidParam(err error) *AppError {
-	return ErrInvalidParam.WithMessage(TranslateError(err).Error())
+	return errInvalidParam.WithMessage(TranslateError(err).Error())
 }
-func MsgErrTokenClientInvalid(err error) *AppError {
-	return ErrTokenClientInvalid.WithMessage(err.Error())
+func MsgErrTokenClientInvalid(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errTokenClientInvalid.Message
+	}
+	return errTokenClientInvalid.WithMessage(msg, errs...)
 }
-func MsgErrTokenServerInvalid(err error) *AppError {
-	return ErrTokenServerInvalid.WithMessage(err.Error())
-}
-
-func MsgErrUnauthorized(err error) *AppError {
-	return ErrUnauthorized.WithMessage(err.Error())
-}
-
-func MsgErrForbiddenAuth(err error) *AppError {
-	return ErrForbiddenAuth.WithMessage(err.Error())
-}
-func MsgErrUserDisabled(err error) *AppError {
-	return ErrUserDisabled.WithMessage(err.Error())
+func MsgErrTokenServerInvalid(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errTokenServerInvalid.Message
+	}
+	return errTokenServerInvalid.WithMessage(msg, errs...)
 }
 
-func MsgErrNotFound(err error) *AppError {
-	return ErrNotFound.WithMessage(err.Error())
+func MsgErrUnauthorized(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errUnauthorized.Message
+	}
+	return errUnauthorized.WithMessage(msg, errs...)
 }
 
-func MsgErrDataExists(err error) *AppError {
-	return ErrDataExists.WithMessage(err.Error())
+func MsgErrForbiddenAuth(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errForbiddenAuth.Message
+	}
+	return errForbiddenAuth.WithMessage(msg, errs...)
 }
-func MsgErrUniqueIndexConflict(err error) *AppError {
-	return ErrUniqueIndexConflict.WithMessage(err.Error())
-}
-
-func MsgErrServerBusy(err error) *AppError {
-	return ErrServerBusy.WithMessage(err.Error())
-}
-func MsgErrDatabase(err error) *AppError {
-	return ErrDatabase.WithMessage(err.Error())
-}
-func MsgErrRedis(err error) *AppError {
-	return ErrRedis.WithMessage(err.Error())
+func MsgErrUserDisabled(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errUserDisabled.Message
+	}
+	return errUserDisabled.WithMessage(msg, errs...)
 }
 
-func MsgEncryptErr(err error) *AppError {
-	return ErrEncrypt.WithMessage(err.Error())
+func MsgErrNotFound(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errNotFound.Message
+	}
+	return errNotFound.WithMessage(msg, errs...)
+}
+
+func MsgErrDataExists(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errDataExists.Message
+	}
+	return errDataExists.WithMessage(msg, errs...)
+}
+func MsgErrUniqueIndexConflict(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errUniqueIndexConflict.Message
+	}
+	return errUniqueIndexConflict.WithMessage(msg, errs...)
+}
+
+func MsgErrServerBusy(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errServerBusy.Message
+	}
+	return errServerBusy.WithMessage(msg, errs...)
+}
+func MsgErrDatabase(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errDatabase.Message
+	}
+	return errDatabase.WithMessage(msg, errs...)
+}
+func MsgErrRedis(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errRedis.Message
+	}
+	return errRedis.WithMessage(msg, errs...)
+}
+
+func MsgEncryptErr(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errEncrypt.Message
+	}
+	return errEncrypt.WithMessage(msg, errs...)
+}
+
+func MsgErrOther(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errOther.Message
+	}
+	return errOther.WithMessage(msg, errs...)
 }
 
 func ErrIsAppErr(err error, appErr *AppError) bool {
@@ -182,22 +247,22 @@ func ErrIsAppErr(err error, appErr *AppError) bool {
 func ReturnErrDatabase(err error, msg string, notfoundMsg ...string) *AppError {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		if len(notfoundMsg) == 0 {
-			notfoundMsg = append(notfoundMsg, ErrNotFound.Message)
+			notfoundMsg = append(notfoundMsg, errNotFound.Message)
 		}
-		return ErrNotFound.WithMessage(notfoundMsg[0])
+		return MsgErrNotFound(notfoundMsg[0], err)
 	}
-	return ErrDatabase.WithMessage(msg)
+	return MsgErrDatabase(msg, err)
 }
 
 // ConvertToAppError 把任意错误转换成统一的业务错误模型。
 func ConvertToAppError(err error) *AppError {
 	if err == nil {
-		return ErrServerBusy.WithMessage("服务异常，请稍后重试")
+		return MsgErrServerBusy("服务异常，请稍后重试")
 	}
 
 	var appErr *AppError
 	if errors.As(err, &appErr) {
-		if appErr.Code == ErrInvalidParam.Code {
+		if appErr.Code == errInvalidParam.Code {
 			appErr.Message = TranslateError(errors.New(appErr.Message)).Error()
 			return appErr
 		}
@@ -207,22 +272,22 @@ func ConvertToAppError(err error) *AppError {
 	// 映射特定的错误到业务错误
 	switch {
 	case ErrRecordNotFound(err):
-		return ErrNotFound.WithMessage("数据不存在")
+		return MsgErrNotFound("数据不存在", err)
 	case ErrDuplicatedKey(err):
-		return ErrDataExists.WithMessage("数据已存在")
+		return MsgErrDataExists("数据已存在", err)
 	case ErrInvalidField(err):
-		return ErrDatabase.WithMessage("数据处理失败，请检查输入")
+		return MsgErrDatabase("数据处理失败，请检查输入", err)
 	case ErrInvalidTransaction(err):
-		return ErrDatabase.WithMessage("服务异常，请稍后重试")
+		return MsgErrDatabase("服务异常，请稍后重试", err)
 	}
 
 	// 处理mysql特定错误
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) {
-		return ErrDatabase.WithMessage(mysqlErr.Message)
+		return MsgErrDatabase("服务异常，请稍后重试", err)
 	}
 
-	return ErrOther.WithMessage(err.Error())
+	return MsgErrOther("操作失败，请稍后重试", err)
 }
 
 type Response struct {
@@ -247,13 +312,13 @@ func ResponseError(c *gin.Context, err error) {
 func ResponseParamError(c *gin.Context, err error) {
 	GetContextLogger(c).Error().Msg("resp_err", err.Error())
 	te := TranslateError(err).Error()
-	c.Set(CtxKeyRespStatus, ErrInvalidParam.Code)
+	c.Set(CtxKeyRespStatus, errInvalidParam.Code)
 	c.Set(CtxKeyRespMsg, te)
 	if te == "" {
-		te = ErrInvalidParam.Message
+		te = errInvalidParam.Message
 	}
 	c.JSON(http.StatusOK, &Response{
-		Code:    ErrInvalidParam.Code,
+		Code:    errInvalidParam.Code,
 		Message: te,
 	})
 }
@@ -302,8 +367,8 @@ func ResponseSuccessEncryptData(c *gin.Context, data any, custom func(now int64)
 	response, err := EncryptData(data, custom)
 	if err != nil {
 		c.JSON(http.StatusOK, &Response{
-			Code:    ErrEncrypt.Code,
-			Message: ErrEncrypt.Message,
+			Code:    errEncrypt.Code,
+			Message: errEncrypt.Message,
 		})
 		return
 	}

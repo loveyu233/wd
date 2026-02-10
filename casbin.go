@@ -82,7 +82,7 @@ func (e *CachedEnforcer) CustomGinMiddleware(getSubFunc func(c *gin.Context) (st
 			c.Abort()
 		}
 		if !InsCasbin.CustomEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method) {
-			ResponseError(c, ErrForbiddenAuth)
+			ResponseError(c, MsgErrForbiddenAuth("权限不足"))
 			c.Abort()
 		}
 	}

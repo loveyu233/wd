@@ -250,13 +250,13 @@ func (a *ZFBClient) login(c *gin.Context) {
 		IvStr         string `json:"iv_str"`
 	}
 	if err := c.BindJSON(&params); err != nil {
-		wd.ResponseError(c, wd.ErrInvalidParam)
+		wd.ResponseError(c, wd.MsgErrInvalidParam(err))
 		return
 	}
 
 	session, err := a.SystemOauthToken(params.Code)
 	if err != nil || session.OpenId == "" {
-		wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝登录失败，请重试"))
+		wd.ResponseError(c, wd.MsgErrRequestAli("支付宝登录失败，请重试", err))
 		return
 	}
 
@@ -268,7 +268,7 @@ func (a *ZFBClient) login(c *gin.Context) {
 	//检测用户是否注册
 	user, exists, err = a.zfbMiniImp.IsExistsUser(session.UnionId)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrDatabase.WithMessage("用户信息查询失败，请稍后重试"))
+		wd.ResponseError(c, wd.MsgErrDatabase("用户信息查询失败，请稍后重试", err))
 		return
 	}
 	if !exists {
@@ -280,23 +280,23 @@ func (a *ZFBClient) login(c *gin.Context) {
 		}
 		decryption, err := a.MobilePhoneNumberDecryption(params.EncryptedData)
 		if err != nil {
-			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝授权失败，请重试"))
+			wd.ResponseError(c, wd.MsgErrRequestAli("支付宝授权失败，请重试", err))
 		}
 
 		if decryption == nil {
-			wd.ResponseError(c, wd.ErrRequestAli.WithMessage("支付宝授权失败，请重试"))
+			wd.ResponseError(c, wd.MsgErrRequestAli("支付宝授权失败，请重试", err))
 			return
 		}
 
 		if user, err = a.zfbMiniImp.CreateUser(decryption.Mobile, session.UnionId, session.OpenId, c.ClientIP()); err != nil {
-			wd.ResponseError(c, wd.ErrDatabase.WithMessage("注册失败，请稍后重试"))
+			wd.ResponseError(c, wd.MsgErrDatabase("注册失败，请稍后重试", err))
 			return
 		}
 	}
 
 	data, err := a.zfbMiniImp.GenerateToken(user, session.OpenId)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrServerBusy.WithMessage("登录失败，请稍后重试"))
+		wd.ResponseError(c, wd.MsgErrServerBusy("登录失败，请稍后重试", err))
 		return
 	}
 	switch data.(type) {
@@ -388,16 +388,16 @@ func (a *ZFBClient) notify(c *gin.Context) {
 func (a *ZFBClient) pay(c *gin.Context) {
 	payParam, err := a.zfbMiniImp.Pay(c)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝支付请求失败", err))
 		return
 	}
 	aliRsp, err := a.TradeCreate(payParam)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝支付请求失败", err))
 		return
 	}
 	if aliRsp.StatusCode != 10000 {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(aliRsp.ErrResponse.Message))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝支付请求失败", errors.New(aliRsp.ErrResponse.Message)))
 		return
 	}
 	wd.ResponseSuccess(c, gin.H{
@@ -409,16 +409,16 @@ func (a *ZFBClient) pay(c *gin.Context) {
 func (a *ZFBClient) refund(c *gin.Context) {
 	param, err := a.zfbMiniImp.Refund(c)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝支付请求失败", err))
 		return
 	}
 	refund, err := a.TradeRefund(param)
 	if err != nil {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(err.Error()))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝支付请求失败", err))
 		return
 	}
 	if refund.StatusCode != 10000 {
-		wd.ResponseError(c, wd.ErrRequestAliPay.WithMessage(refund.ErrResponse.Message))
+		wd.ResponseError(c, wd.MsgErrRequestAliPay("支付宝退款请求失败", errors.New(refund.ErrResponse.Message)))
 		return
 	}
 	wd.ResponseSuccess(c, gin.H{
