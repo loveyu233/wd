@@ -3,8 +3,8 @@ package msg
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/contract"
@@ -30,28 +30,31 @@ func (wx *WXOfficial) oACallbackVerify(c *gin.Context) {
 	//回调验证
 	rs, err := wx.OfficialAccountApp.Server.VerifyURL(c.Request)
 	if err != nil {
-		panic(err)
+		c.String(http.StatusBadRequest, "verify failed")
+		return
 	}
+	defer rs.Body.Close()
 	text, _ := io.ReadAll(rs.Body)
 	c.String(http.StatusOK, string(text))
 }
 
 func (wx *WXOfficial) oACallback(c *gin.Context) {
 	rs, err := wx.OfficialAccountApp.Server.Notify(c.Request, func(event contract.EventInterface) interface{} {
-		fmt.Println("event", event)
 		switch event.GetMsgType() {
 		case models2.CALLBACK_MSG_TYPE_TEXT:
 			//收到用户的消息
 			msg := models.MessageText{}
-			err := event.ReadMessage(&msg)
-			if err != nil {
-				println(err.Error())
+			if err := event.ReadMessage(&msg); err != nil {
+				log.Printf("[微信公众号] 读取文本消息失败: %v", err)
 				return "error"
 			}
 
 		case models2.CALLBACK_MSG_TYPE_EVENT:
-			fmt.Println(event.GetToUserName(), event.GetFromUserName())
-			rs, _ := wx.OfficialAccountApp.User.Get(context.Background(), event.GetFromUserName(), "zh_CN")
+			rs, err := wx.OfficialAccountApp.User.Get(context.Background(), event.GetFromUserName(), "zh_CN")
+			if err != nil {
+				log.Printf("[微信公众号] 获取用户信息失败: %v", err)
+				break
+			}
 			switch event.GetEvent() {
 			case "subscribe": // 关注
 				if rs.OpenID != "" {
@@ -67,10 +70,11 @@ func (wx *WXOfficial) oACallback(c *gin.Context) {
 	})
 
 	if err != nil {
-		c.String(200, err.Error())
+		c.String(http.StatusOK, "success")
 		return
 	}
 
+	defer rs.Body.Close()
 	text, _ := io.ReadAll(rs.Body)
 	c.String(http.StatusOK, string(text))
 }

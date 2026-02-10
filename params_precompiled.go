@@ -653,7 +653,7 @@ func (r *ReqFile) parse() error {
 	var err error
 	r.file, err = r.File.Open()
 	if err != nil {
-		return MsgErrDataExists("文件读取失败", err)
+		return MsgErrServerBusy("文件读取失败", err)
 	}
 	r.isParse = true
 	return nil
@@ -671,7 +671,7 @@ func (r *ReqFile) FileContent() ([]byte, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return nil, MsgErrDataExists("文件读取失败", err)
+		return nil, MsgErrServerBusy("文件读取失败", err)
 	}
 	return r.fileBytes, nil
 }
@@ -689,7 +689,7 @@ func (r *ReqFile) GetFileContentType() (string, error) {
 	var err error
 	r.fileBytes, err = io.ReadAll(r.file)
 	if err != nil {
-		return "", MsgErrDataExists("文件读取失败", err)
+		return "", MsgErrServerBusy("文件读取失败", err)
 	}
 	r.isRead = true
 	return GetFileContentType(r.fileBytes), nil

@@ -68,9 +68,8 @@ func (e *CachedEnforcer) InitCasbinRule(mandatory ...bool) error {
 }
 
 // CustomEnforce 校验权限是否存在
-func (e *CachedEnforcer) CustomEnforce(sub, obj, act string) bool {
-	enforce, _ := e.Enforce(sub, obj, act)
-	return enforce
+func (e *CachedEnforcer) CustomEnforce(sub, obj, act string) (bool, error) {
+	return e.Enforce(sub, obj, act)
 }
 
 // CustomGinMiddleware gin的中间件，用于检查用户权限，请求的url path会过滤掉http配置中prefix前缀
@@ -80,10 +79,18 @@ func (e *CachedEnforcer) CustomGinMiddleware(getSubFunc func(c *gin.Context) (st
 		if err != nil {
 			ResponseError(c, err)
 			c.Abort()
+			return
 		}
-		if !InsCasbin.CustomEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method) {
+		allowed, err := InsCasbin.CustomEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method)
+		if err != nil {
+			ResponseError(c, MsgErrServerBusy("权限校验失败", err))
+			c.Abort()
+			return
+		}
+		if !allowed {
 			ResponseError(c, MsgErrForbiddenAuth("权限不足"))
 			c.Abort()
+			return
 		}
 	}
 }

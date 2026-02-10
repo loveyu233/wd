@@ -351,7 +351,11 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 		// 在 c.Next() 之前读取并缓存请求体，避免后续读取时 body 已关闭
 		var cachedRequestBody []byte
 		if c.Request.Body != nil && c.Request.Body != http.NoBody && c.Request.ContentLength > 0 {
-			cachedRequestBody, _ = io.ReadAll(c.Request.Body)
+			var readErr error
+			cachedRequestBody, readErr = io.ReadAll(c.Request.Body)
+			if readErr != nil {
+				cachedRequestBody = nil
+			}
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(cachedRequestBody))
 		}
 

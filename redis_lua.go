@@ -2,6 +2,7 @@ package wd
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
@@ -18,6 +19,15 @@ type item struct {
 type LuaRespData struct {
 	Range  []item `json:"range"`
 	Target item   `json:"target"`
+}
+
+// luaUnmarshalResult 安全地将 Lua 脚本返回的 string 反序列化为目标对象。
+func luaUnmarshalResult(result any, v any) error {
+	s, ok := result.(string)
+	if !ok {
+		return fmt.Errorf("redis lua: 期望返回 string 类型，实际返回 %T", result)
+	}
+	return json.Unmarshal([]byte(s), v)
 }
 
 // LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreAndGetHashValue 用来查询 zset 范围并附带目标成员及哈希值。
@@ -109,7 +119,7 @@ func (r *RedisConfig) LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreAndGetHash
 	}
 
 	var luaRespData *LuaRespData
-	err = json.Unmarshal([]byte(result.(string)), &luaRespData)
+	err = luaUnmarshalResult(result, &luaRespData)
 	if err != nil {
 		if err.Error() == "json: cannot unmarshal object into Go struct field LuaRespData.range of type []gb.item" {
 			return luaRespData, nil
@@ -215,7 +225,7 @@ func (r *RedisConfig) LuaRedisZSetGetTargetKeyAndStartToEndRankByScore(key strin
 	}
 
 	var luaRespData *LuaRespData
-	err = json.Unmarshal([]byte(result.(string)), &luaRespData)
+	err = luaUnmarshalResult(result, &luaRespData)
 	if err != nil {
 		if err.Error() == "json: cannot unmarshal object into Go struct field LuaRespData.range of type []gb.item" {
 			return luaRespData, nil
@@ -295,7 +305,7 @@ func (r *RedisConfig) LuaRedisZSetGetMemberScoreAndRankAndGetHashValue(zSetKey, 
 	}
 
 	var memberInfo *MemberInfo
-	err = json.Unmarshal([]byte(result.(string)), &memberInfo)
+	err = luaUnmarshalResult(result, &memberInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +371,7 @@ func (r *RedisConfig) LuaRedisZSetGetMemberScoreAndRank(key string, member strin
 	}
 
 	var memberInfo *MemberInfo
-	err = json.Unmarshal([]byte(result.(string)), &memberInfo)
+	err = luaUnmarshalResult(result, &memberInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +457,7 @@ func (r *RedisConfig) LuaRedisZSetGetMultipleMembersScoreAndRankAndHashValues(zS
 	}
 
 	var memberInfos []*MemberInfo
-	err = json.Unmarshal([]byte(result.(string)), &memberInfos)
+	err = luaUnmarshalResult(result, &memberInfos)
 	if err != nil {
 		return nil, err
 	}
@@ -530,7 +540,7 @@ func (r *RedisConfig) LuaRedisZSetGetMultipleMembersScoreAndRank(key string, mem
 	}
 
 	var memberInfos []*MemberInfo
-	err = json.Unmarshal([]byte(result.(string)), &memberInfos)
+	err = luaUnmarshalResult(result, &memberInfos)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +572,7 @@ func (r *RedisConfig) LuaRedisDistributedLock(key, value string, expireSeconds i
 	if err != nil {
 		return false, err
 	}
-	return result.(int64) == 1, nil
+	return cast.ToInt64(result) == 1, nil
 }
 
 // LuaRedisDistributedUnlock 用来安全地释放分布式锁。
@@ -577,7 +587,7 @@ func (r *RedisConfig) LuaRedisDistributedUnlock(key, value string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return result.(int64) == 1, nil
+	return cast.ToInt64(result) == 1, nil
 }
 
 // 2. 限流相关
@@ -608,7 +618,7 @@ func (r *RedisConfig) LuaRedisRateLimit(key string, window, limit int64) (int64,
 	if err != nil {
 		return -1, err
 	}
-	return result.(int64), nil
+	return cast.ToInt64(result), nil
 }
 
 // 3. 计数器相关
@@ -652,7 +662,7 @@ func (r *RedisConfig) LuaRedisIncrWithLimit(key string, increment, maxValue, exp
 	}
 
 	var counterResult *CounterResult
-	err = json.Unmarshal([]byte(result.(string)), &counterResult)
+	err = luaUnmarshalResult(result, &counterResult)
 	return counterResult, err
 }
 
@@ -676,7 +686,7 @@ func (r *RedisConfig) LuaRedisQueuePushWithLimit(key, value string, maxLength in
 	if err != nil {
 		return -1, err
 	}
-	return result.(int64), nil
+	return cast.ToInt64(result), nil
 }
 
 // 5. 缓存相关
@@ -703,7 +713,7 @@ func (r *RedisConfig) LuaRedisSetWithVersion(key, value string, version, expireS
 	if err != nil {
 		return false, err
 	}
-	return result.(int64) == 1, nil
+	return cast.ToInt64(result) == 1, nil
 }
 
 // 6. 库存扣减
@@ -746,7 +756,7 @@ func (r *RedisConfig) LuaRedisDecrStock(key string, quantity int64) (*StockResul
 	}
 
 	var stockResult *StockResult
-	err = json.Unmarshal([]byte(result.(string)), &stockResult)
+	err = luaUnmarshalResult(result, &stockResult)
 	return stockResult, err
 }
 
@@ -776,7 +786,7 @@ func (r *RedisConfig) LuaRedisHLLAddAndCount(key string, elements []string) (int
 	if err != nil {
 		return 0, err
 	}
-	return result.(int64), nil
+	return cast.ToInt64(result), nil
 }
 
 // 8. 排行榜相关
@@ -808,7 +818,7 @@ func (r *RedisConfig) LuaRedisLeaderboardIncr(key, member string, increment floa
 	}
 
 	var leaderboardMember *LeaderboardMember
-	err = json.Unmarshal([]byte(result.(string)), &leaderboardMember)
+	err = luaUnmarshalResult(result, &leaderboardMember)
 	return leaderboardMember, err
 }
 
@@ -862,7 +872,7 @@ func (r *RedisConfig) LuaRedisDelayQueuePop(key string, currentTime int64, limit
 	}
 
 	var messages []*DelayedMessage
-	err = json.Unmarshal([]byte(result.(string)), &messages)
+	err = luaUnmarshalResult(result, &messages)
 	return messages, err
 }
 
@@ -912,7 +922,7 @@ func (r *RedisConfig) LuaRedisBloomExists(key, element string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return result.(int64) == 1, nil
+	return cast.ToInt64(result) == 1, nil
 }
 
 type luaRedisIDConfig struct {

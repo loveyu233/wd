@@ -190,9 +190,6 @@ func (a *ZFBClient) MobilePhoneNumberDecryption(response string) (*MobilePhoneNu
 	}
 
 	iv := make([]byte, 16)
-	for i := 0; i < 16; i++ {
-		iv[i] = 0
-	}
 
 	encryptedBytes, err := base64.StdEncoding.DecodeString(response)
 	if err != nil {
