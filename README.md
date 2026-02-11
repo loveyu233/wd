@@ -92,10 +92,10 @@ func main() {
     })
     wd.PrivateRoutes.Append(func(rg *gin.RouterGroup) {
         rg.GET("/profile", func(c *gin.Context) {
-            claims := auth.ExtractClaims(c)
+            payload, _ := wd.ExtractClaimsAs[accountPayload](c)
             c.JSON(http.StatusOK, gin.H{
-                "claims": claims,
-                "token":  wd.GetToken(c),
+                "payload": payload,
+                "token":   wd.GetToken(c),
             })
         })
     })

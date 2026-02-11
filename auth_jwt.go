@@ -13,10 +13,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// MapClaims 使用 map[string]interface{} 进行 JSON 解码的类型
-// 如果你没有提供一个，这是默认的声明类型
-type MapClaims map[string]interface{}
-
 // JWTCookieConfig 聚合所有与 Cookie 相关的配置字段。
 type JWTCookieConfig struct {
 	// Cookie 名称，默认 "jwt"。
@@ -93,7 +89,7 @@ type GinJWTMiddleware struct {
 	// 请注意，有效负载未加密。
 	// jwt.io 上提到的属性不能用作映射的键。
 	// 可选，默认情况下不会设置其他数据。
-	PayloadFunc func(data interface{}) MapClaims
+	PayloadFunc func(data interface{}) map[string]interface{}
 
 	// 用户可以定义自己的未授权函数。
 	Unauthorized func(c *gin.Context, code int, message string)
@@ -172,19 +168,19 @@ func NewGinJWTMiddleware[T any, P any](
 	mw.Authenticator = func(c *gin.Context) (any, error) {
 		return authenticator(c)
 	}
-	mw.PayloadFunc = func(data any) MapClaims {
+	mw.PayloadFunc = func(data any) map[string]interface{} {
 		p := payloadFunc(data.(T))
 		b, err := json.Marshal(p)
 		if err != nil {
-			return MapClaims{}
+			return map[string]interface{}{}
 		}
-		var claims MapClaims
+		var claims map[string]interface{}
 		_ = json.Unmarshal(b, &claims)
 		return claims
 	}
 	if identityHandler != nil {
 		mw.IdentityHandler = func(c *gin.Context) (any, error) {
-			claims := ExtractClaims(c)
+			claims := extractClaims(c)
 			b, err := json.Marshal(claims)
 			if err != nil {
 				return nil, err
@@ -337,7 +333,7 @@ func (mw *GinJWTMiddleware) init() error {
 
 	if mw.IdentityHandler == nil {
 		mw.IdentityHandler = func(c *gin.Context) (interface{}, error) {
-			claims := ExtractClaims(c)
+			claims := extractClaims(c)
 			return claims[mw.IdentityKey], nil
 		}
 	}
@@ -418,7 +414,7 @@ func (mw *GinJWTMiddleware) middlewareImpl(c *gin.Context) {
 }
 
 // validateExpiration 校验 claims 中的 exp 是否过期。
-func (mw *GinJWTMiddleware) validateExpiration(claims MapClaims) *AppError {
+func (mw *GinJWTMiddleware) validateExpiration(claims map[string]interface{}) *AppError {
 	now := mw.TimeFunc().Unix()
 	switch v := claims["exp"].(type) {
 	case float64:
@@ -437,7 +433,7 @@ func (mw *GinJWTMiddleware) validateExpiration(claims MapClaims) *AppError {
 }
 
 // GetClaimsFromJWT 用来解析请求中的 JWT 并返回 Claims。
-func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) {
+func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (map[string]interface{}, error) {
 	token, err := mw.ParseToken(c)
 	if err != nil {
 		return nil, err
@@ -449,7 +445,7 @@ func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) 
 		}
 	}
 
-	claims := MapClaims{}
+	claims := map[string]interface{}{}
 	for key, value := range token.Claims.(jwt.MapClaims) {
 		claims[key] = value
 	}
@@ -782,28 +778,40 @@ func GetIdentityAs[T any](mw *GinJWTMiddleware, c *gin.Context) (T, bool) {
 	return t, ok
 }
 
-// ExtractClaims 是 GinJWTMiddleware 的实例方法，从 gin.Context 中取出 JWT Claims。
-func (mw *GinJWTMiddleware) ExtractClaims(c *gin.Context) MapClaims {
-	return ExtractClaims(c)
-}
-
-// ExtractClaims 用来从 gin.Context 中取出 JWT Claims（包级函数）。
-func ExtractClaims(c *gin.Context) MapClaims {
+// extractClaims 用来从 gin.Context 中取出 JWT Claims（内部函数）。
+func extractClaims(c *gin.Context) map[string]interface{} {
 	claims, exists := c.Get(CtxKeyJWTPayload)
 	if !exists {
-		return make(MapClaims)
+		return make(map[string]interface{})
 	}
 
-	return claims.(MapClaims)
+	return claims.(map[string]interface{})
+}
+
+// ExtractClaimsAs 从 gin.Context 中取出 JWT Claims 并反序列化为 P 类型。
+// P 通常与 NewGinJWTMiddleware 中 payloadFunc 的返回类型一致。
+func ExtractClaimsAs[P any](c *gin.Context) (P, error) {
+	claims := extractClaims(c)
+	b, err := json.Marshal(claims)
+	if err != nil {
+		var zero P
+		return zero, err
+	}
+	var payload P
+	if err := json.Unmarshal(b, &payload); err != nil {
+		var zero P
+		return zero, err
+	}
+	return payload, nil
 }
 
 // ExtractClaimsFromToken 用来从 jwt.Token 中复制 Claims。
-func ExtractClaimsFromToken(token *jwt.Token) MapClaims {
+func ExtractClaimsFromToken(token *jwt.Token) map[string]interface{} {
 	if token == nil {
-		return make(MapClaims)
+		return make(map[string]interface{})
 	}
 
-	claims := MapClaims{}
+	claims := map[string]interface{}{}
 	for key, value := range token.Claims.(jwt.MapClaims) {
 		claims[key] = value
 	}
