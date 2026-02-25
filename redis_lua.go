@@ -979,3 +979,24 @@ func (r *RedisConfig) LuaRedisID(opts ...WithLuaRedisIDConfigOption) (int64, err
 	}
 	return cast.ToInt64(result), nil
 }
+
+func (r *RedisConfig) LuaWithholding(key string, requestNumber uint64) (int64, error) {
+	var script = `
+		-- 获取当前库存量
+		local currentStock = redis.call('GET', KEYS[1])
+		
+		-- 判断库存是否足够满足请求
+		if tonumber(currentStock) >= tonumber(ARGV[1]) then
+			-- 如果库存充足，则扣减相应数量并返回新的库存值
+			return redis.call('DECRBY', KEYS[1], ARGV[1])
+		else
+			-- 如果库存不足，返回 -1 表示扣减失败
+			return -1
+		end
+	`
+	result, err := redis.NewScript(script).Run(context.Background(), r.UniversalClient, []string{key}, requestNumber).Result()
+	if err != nil {
+		return -1, err
+	}
+	return cast.ToInt64(result), nil
+}
