@@ -74,6 +74,7 @@ var (
 	// 409xxx 数据已存在
 	errDataExists          = NewAppError(409000, "数据已存在", nil)
 	errUniqueIndexConflict = NewAppError(409001, "数据已存在", nil)
+	errVERSION_CONFLICT    = NewAppError(409002, "当前数据并非最新数据", nil)
 
 	// 5xxxxx 服务器错误
 	errServerBusy = NewAppError(500000, "服务繁忙，请稍后重试", nil)
@@ -204,6 +205,13 @@ func MsgErrUniqueIndexConflict(msg string, errs ...error) *AppError {
 		msg = errUniqueIndexConflict.Message
 	}
 	return errUniqueIndexConflict.WithMessage(msg, errs...)
+}
+
+func MsgErrVERSION_CONFLICT(msg string, errs ...error) *AppError {
+	if msg == "" {
+		msg = errVERSION_CONFLICT.Message
+	}
+	return errVERSION_CONFLICT.WithMessage(msg, errs...)
 }
 
 func MsgErrServerBusy(msg string, errs ...error) *AppError {
