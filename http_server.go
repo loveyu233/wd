@@ -58,6 +58,7 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOption) *H
 // startHTTPServer 用来启动底层 http.Server。
 func (h *HTTPServer) startHTTPServer() {
 	if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		InsGlobalHook.Close()
 		panic(err)
 	}
 }
