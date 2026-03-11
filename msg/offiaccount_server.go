@@ -34,7 +34,12 @@ func (wx *WXOfficial) oACallbackVerify(c *gin.Context) {
 		return
 	}
 	defer rs.Body.Close()
-	text, _ := io.ReadAll(rs.Body)
+	text, err := io.ReadAll(rs.Body)
+	if err != nil {
+		log.Printf("[微信公众号] 读取回调验证响应失败: %v", err)
+		c.String(http.StatusInternalServerError, "verify failed")
+		return
+	}
 	c.String(http.StatusOK, string(text))
 }
 
@@ -53,29 +58,43 @@ func (wx *WXOfficial) oACallback(c *gin.Context) {
 			rs, err := wx.OfficialAccountApp.User.Get(context.Background(), event.GetFromUserName(), "zh_CN")
 			if err != nil {
 				log.Printf("[微信公众号] 获取用户信息失败: %v", err)
-				break
+				return "error"
 			}
 			switch event.GetEvent() {
 			case "subscribe": // 关注
-				if rs.OpenID != "" {
-					wx.subscribe(rs, event)
+				if rs.OpenID != "" && wx.subscribe != nil {
+					if err := wx.subscribe(rs, event); err != nil {
+						log.Printf("[微信公众号] 关注回调处理失败: %v", err)
+						return "error"
+					}
 				}
 				// 这里回复success告诉微信我收到,后续需要回复用户信息可以主动调发消息接口
 				return messages.NewText("感谢您的关注！")
 			case "unsubscribe": // 取消关注
-				wx.unSubscribe(rs, event)
+				if wx.unSubscribe != nil {
+					if err := wx.unSubscribe(rs, event); err != nil {
+						log.Printf("[微信公众号] 取消关注回调处理失败: %v", err)
+						return "error"
+					}
+				}
 			}
 		}
 		return ""
 	})
 
 	if err != nil {
-		c.String(http.StatusOK, "success")
+		log.Printf("[微信公众号] 回调通知处理失败: %v", err)
+		c.String(http.StatusInternalServerError, "fail")
 		return
 	}
 
 	defer rs.Body.Close()
-	text, _ := io.ReadAll(rs.Body)
+	text, err := io.ReadAll(rs.Body)
+	if err != nil {
+		log.Printf("[微信公众号] 读取回调响应失败: %v", err)
+		c.String(http.StatusInternalServerError, "fail")
+		return
+	}
 	c.String(http.StatusOK, string(text))
 }
 

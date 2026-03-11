@@ -278,6 +278,7 @@ func (a *ZFBClient) login(c *gin.Context) {
 		decryption, err := a.MobilePhoneNumberDecryption(params.EncryptedData)
 		if err != nil {
 			wd.ResponseError(c, wd.MsgErrRequestAli("支付宝授权失败，请重试", err))
+			return
 		}
 
 		if decryption == nil {
@@ -342,7 +343,7 @@ func (a *ZFBClient) zfbPayNotify(req *http.Request) (*ZFBSyncNotify, error) {
 	if err != nil {
 		return nil, err
 	}
-	ok, err := alipayv2.VerifySign(string(a.appPublicKey), bodyMap)
+	ok, err := alipayv2.VerifySign(string(a.aliPublicKey), bodyMap)
 	if err != nil {
 		return nil, err
 	}
@@ -357,17 +358,21 @@ func (a *ZFBClient) zfbPayNotify(req *http.Request) (*ZFBSyncNotify, error) {
 
 	if resp.RefundFee != 0 {
 		// 退款
-		a.zfbMiniImp.RefundNotify(&ZFBRefund{
-			RefundFee:   resp.RefundFee,
-			SendBackFee: resp.SendBackFee,
-		})
+		if a.zfbMiniImp != nil {
+			a.zfbMiniImp.RefundNotify(&ZFBRefund{
+				RefundFee:   resp.RefundFee,
+				SendBackFee: resp.SendBackFee,
+			})
+		}
 	} else if resp.ReceiptAmount != 0 {
 		// 支付
-		a.zfbMiniImp.PayNotify(&ZFBPay{
-			TotalAmount:    resp.TotalAmount,
-			ReceiptAmount:  resp.ReceiptAmount,
-			BuyerPayAmount: resp.BuyerPayAmount,
-		})
+		if a.zfbMiniImp != nil {
+			a.zfbMiniImp.PayNotify(&ZFBPay{
+				TotalAmount:    resp.TotalAmount,
+				ReceiptAmount:  resp.ReceiptAmount,
+				BuyerPayAmount: resp.BuyerPayAmount,
+			})
+		}
 	}
 
 	return resp, nil

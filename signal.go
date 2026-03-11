@@ -3,6 +3,7 @@ package wd
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
@@ -17,14 +18,24 @@ type Hook interface {
 	Close()
 
 	AppendFun(funcs ...func())
+
+	Trigger()
+
+	Wait() <-chan struct{}
 }
 
 type SignalHook struct {
 	ctx        chan os.Signal
+	done       chan struct{}
 	CloseFuncs []func()
+	mu         sync.RWMutex
+	once       sync.Once
+	runOnce    sync.Once
 }
 
 func (h *SignalHook) AppendFun(funcs ...func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.CloseFuncs = append(h.CloseFuncs, funcs...)
 }
 
@@ -32,7 +43,8 @@ var InsGlobalHook Hook
 
 func init() {
 	hook := &SignalHook{
-		ctx: make(chan os.Signal, 1),
+		ctx:  make(chan os.Signal, 1),
+		done: make(chan struct{}),
 	}
 
 	InsGlobalHook = hook.WithSignals(syscall.SIGINT, syscall.SIGTERM)
@@ -47,12 +59,37 @@ func (h *SignalHook) WithSignals(signals ...syscall.Signal) Hook {
 	return h
 }
 
+func (h *SignalHook) Wait() <-chan struct{} {
+	h.once.Do(func() {
+		go h.listen()
+	})
+	return h.done
+}
+
+func (h *SignalHook) listen() {
+	<-h.ctx
+	h.Trigger()
+}
+
+func (h *SignalHook) Trigger() {
+	h.runOnce.Do(func() {
+		signal.Stop(h.ctx)
+
+		h.mu.RLock()
+		funcs := append([]func(){}, h.CloseFuncs...)
+		h.mu.RUnlock()
+
+		for _, f := range funcs {
+			if f == nil {
+				continue
+			}
+			f()
+		}
+		close(h.done)
+	})
+}
+
 // Close 用来在收到信号后执行注册的清理函数。
 func (h *SignalHook) Close() {
-	<-h.ctx
-	signal.Stop(h.ctx)
-
-	for _, f := range h.CloseFuncs {
-		f()
-	}
+	<-h.Wait()
 }

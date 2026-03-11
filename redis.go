@@ -286,7 +286,7 @@ func InitRedis(ops ...WithRedisOption) error {
 // NewLock 用来基于 redsync 创建分布式锁。
 func (r *RedisConfig) NewLock(key string, options ...redsync.Option) *redsync.Mutex {
 	r.once.Do(func() {
-		r.lock = redsync.New(goredis.NewPool(InsRedis))
+		r.lock = redsync.New(goredis.NewPool(r.UniversalClient))
 	})
 
 	return r.lock.NewMutex(key, options...)

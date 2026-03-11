@@ -5,11 +5,14 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type HTTPServer struct {
-	server *http.Server
+	server    *http.Server
+	errCh     chan error
+	startOnce sync.Once
 }
 
 var (
@@ -18,6 +21,16 @@ var (
 
 // InitHTTPServerAndStart 用来根据路由配置启动 HTTP 服务并注册钩子。如果初始化了GinJWTMiddleware则默认会添加上
 func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOption) *HTTPServer {
+	server := NewHTTPServer(listenAddr, opts...)
+	server.StartAsync()
+	if err := server.Wait(); err != nil {
+		log.Printf("http start err: %s\n", err)
+	}
+	return server
+}
+
+// NewHTTPServer 用来创建 HTTP 服务实例并注册优雅关闭逻辑。
+func NewHTTPServer(listenAddr string, opts ...GinRouterConfigOption) *HTTPServer {
 	var config RouterConfig
 	for _, opt := range opts {
 		opt(&config)
@@ -31,10 +44,13 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOption) *H
 	}
 	globalApiPrefix = config.prefix
 	engine := initPrivateRouter(config)
-	server := &HTTPServer{server: &http.Server{
-		Addr:    listenAddr,
-		Handler: engine,
-	}}
+	server := &HTTPServer{
+		server: &http.Server{
+			Addr:    listenAddr,
+			Handler: engine,
+		},
+		errCh: make(chan error, 1),
+	}
 	if config.engineFunc != nil {
 		config.engineFunc(engine)
 	}
@@ -50,16 +66,46 @@ func InitHTTPServerAndStart(listenAddr string, opts ...GinRouterConfigOption) *H
 	if config.maxHeaderBytes > 0 {
 		server.server.MaxHeaderBytes = config.maxHeaderBytes
 	}
-	go server.startHTTPServer()
 	server.setupGracefulShutdown()
 	return server
 }
 
-// startHTTPServer 用来启动底层 http.Server。
-func (h *HTTPServer) startHTTPServer() {
+// Start 用来启动底层 http.Server。
+func (h *HTTPServer) Start() error {
 	if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		InsGlobalHook.Close()
-		panic(err)
+		return err
+	}
+	return nil
+}
+
+// StartAsync 用来异步启动服务，并通过 Err/Wait 暴露启动结果。
+func (h *HTTPServer) StartAsync() {
+	h.startOnce.Do(func() {
+		go func() {
+			h.errCh <- h.Start()
+			close(h.errCh)
+		}()
+	})
+}
+
+// Err 用来获取服务运行结束时返回的错误。
+func (h *HTTPServer) Err() <-chan error {
+	return h.errCh
+}
+
+// Wait 用来等待启动失败或优雅关闭完成。
+func (h *HTTPServer) Wait() error {
+	select {
+	case err, ok := <-h.errCh:
+		if !ok {
+			return nil
+		}
+		if err != nil {
+			InsGlobalHook.Trigger()
+		}
+		return err
+	case <-InsGlobalHook.Wait():
+		return nil
 	}
 }
 
@@ -74,6 +120,5 @@ func (h *HTTPServer) setupGracefulShutdown() {
 			log.Printf("http close success\n")
 		}
 	})
-
-	InsGlobalHook.Close()
+	InsGlobalHook.Wait()
 }

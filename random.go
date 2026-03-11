@@ -3,8 +3,13 @@ package wd
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"math/big"
 	mrand "math/rand"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -21,23 +26,98 @@ func GetXID() string {
 	return xid.New().String()
 }
 
-var worker *Worker
+const envSnowflakeWorkerID = "WD_SNOWFLAKE_WORKER_ID"
 
-var once sync.Once
+var (
+	worker          *Worker
+	workerMu        sync.RWMutex
+	workerInitOnce  sync.Once
+	workerInitError error
+)
+
+// InitSnowflakeWorker 用来显式设置雪花算法 worker ID，建议在分布式部署场景下启动时调用。
+func InitSnowflakeWorker(workerID int64) error {
+	w, err := NewWorker(workerID)
+	if err != nil {
+		return err
+	}
+
+	workerMu.Lock()
+	defer workerMu.Unlock()
+	worker = w
+	return nil
+}
 
 // GetSnowflakeID 用来产生分布式雪花 ID。
 func GetSnowflakeID() int64 {
-	once.Do(func() {
-		w, err := NewWorker(1)
-		if err != nil {
-			panic(err)
-		}
-		worker = w
-	})
-	if worker == nil {
-		panic("snowflake worker not initialized")
+	id, err := GetSnowflakeIDErr()
+	if err != nil {
+		panic(err)
 	}
-	return worker.GetId()
+	return id
+}
+
+// GetSnowflakeIDErr 用来产生分布式雪花 ID，并把初始化错误返回给调用方。
+func GetSnowflakeIDErr() (int64, error) {
+	if err := ensureSnowflakeWorker(); err != nil {
+		return 0, err
+	}
+
+	workerMu.RLock()
+	defer workerMu.RUnlock()
+
+	if worker == nil {
+		return 0, errors.New("snowflake worker not initialized")
+	}
+	return worker.GetId(), nil
+}
+
+func ensureSnowflakeWorker() error {
+	workerMu.RLock()
+	if worker != nil {
+		workerMu.RUnlock()
+		return nil
+	}
+	workerMu.RUnlock()
+
+	workerInitOnce.Do(func() {
+		workerID, err := defaultSnowflakeWorkerID()
+		if err != nil {
+			workerInitError = err
+			return
+		}
+		workerInitError = InitSnowflakeWorker(workerID)
+	})
+
+	if workerInitError != nil {
+		return workerInitError
+	}
+
+	workerMu.RLock()
+	defer workerMu.RUnlock()
+	if worker == nil {
+		return errors.New("snowflake worker not initialized")
+	}
+	return nil
+}
+
+func defaultSnowflakeWorkerID() (int64, error) {
+	if raw := strings.TrimSpace(os.Getenv(envSnowflakeWorkerID)); raw != "" {
+		workerID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s 无法解析为整数: %w", envSnowflakeWorkerID, err)
+		}
+		return workerID, nil
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return 0, fmt.Errorf("获取主机名失败: %w", err)
+	}
+
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(hostname))
+	return int64(hasher.Sum32() % uint32(workerMax+1)), nil
 }
 
 // RandomString 用来生成指定长度的随机字符串。

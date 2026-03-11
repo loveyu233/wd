@@ -50,6 +50,7 @@ func (wx *WXPay) refund(c *gin.Context) {
 	refund, err := wx.Refund(refundRequest)
 	if err != nil {
 		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
+		return
 	}
 
 	wd.ResponseSuccess(c, refund)

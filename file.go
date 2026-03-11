@@ -194,6 +194,7 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 	if err != nil {
 		return err
 	}
+	defer open.Close()
 	request := R().
 		SetFileReader(req.fileKey, req.FileName, open).
 		SetFormData(req.OtherParams)

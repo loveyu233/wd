@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -593,7 +594,10 @@ func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, e
 
 	claims := token.Claims.(jwt.MapClaims)
 
-	origIat := int64(claims["orig_iat"].(float64))
+	origIat, err := parseJWTNumericClaim(claims, "orig_iat")
+	if err != nil {
+		return nil, MsgErrTokenClientInvalid("登陆凭证无效请重新登录", err)
+	}
 
 	if origIat < mw.TimeFunc().Add(-mw.MaxRefresh).Unix() {
 		return nil, MsgErrTokenClientInvalid("登陆过期请重新登录")
@@ -699,9 +703,12 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 		if len(token) > 0 {
 			break
 		}
-		parts := strings.Split(strings.TrimSpace(method), ":")
-		k := strings.TrimSpace(parts[0])
-		v := strings.TrimSpace(parts[1])
+
+		k, v, parseErr := parseTokenLookupMethod(method)
+		if parseErr != nil {
+			return nil, MsgErrTokenServerInvalid("JWT 配置错误", parseErr)
+		}
+
 		switch k {
 		case "header":
 			token, err = mw.jwtFromHeader(c, v)
@@ -713,6 +720,8 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 			token, err = mw.jwtFromParam(c, v)
 		case "form":
 			token, err = mw.jwtFromForm(c, v)
+		default:
+			return nil, MsgErrTokenServerInvalid("JWT 配置错误", fmt.Errorf("unsupported token lookup source %q", k))
 		}
 	}
 
@@ -737,6 +746,64 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error) {
 
 		return mw.Key, nil
 	}, mw.ParseOptions...)
+}
+
+func parseJWTNumericClaim(claims jwt.MapClaims, key string) (int64, error) {
+	value, exists := claims[key]
+	if !exists {
+		return 0, fmt.Errorf("claim %q not found", key)
+	}
+
+	switch typedValue := value.(type) {
+	case float64:
+		return int64(typedValue), nil
+	case float32:
+		return int64(typedValue), nil
+	case int:
+		return int64(typedValue), nil
+	case int8:
+		return int64(typedValue), nil
+	case int16:
+		return int64(typedValue), nil
+	case int32:
+		return int64(typedValue), nil
+	case int64:
+		return typedValue, nil
+	case uint:
+		return int64(typedValue), nil
+	case uint8:
+		return int64(typedValue), nil
+	case uint16:
+		return int64(typedValue), nil
+	case uint32:
+		return int64(typedValue), nil
+	case uint64:
+		return int64(typedValue), nil
+	case json.Number:
+		return typedValue.Int64()
+	default:
+		return 0, fmt.Errorf("claim %q has invalid type %T", key, value)
+	}
+}
+
+func parseTokenLookupMethod(method string) (string, string, error) {
+	method = strings.TrimSpace(method)
+	if method == "" {
+		return "", "", errors.New("token lookup item is empty")
+	}
+
+	parts := strings.SplitN(method, ":", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid token lookup item %q", method)
+	}
+
+	source := strings.TrimSpace(parts[0])
+	name := strings.TrimSpace(parts[1])
+	if source == "" || name == "" {
+		return "", "", fmt.Errorf("invalid token lookup item %q", method)
+	}
+
+	return source, name, nil
 }
 
 // ParseTokenString 用来解析给定的原始令牌字符串。

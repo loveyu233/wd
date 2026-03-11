@@ -31,11 +31,11 @@ type WxMiniMsgContent struct {
 func WxMiniSubscribeMessageSend(wxMiniApp *login.WXMini, ctx context.Context, content WxMiniMsgContent) (*response.ResponseMiniProgram, error) {
 	var data = make(power.HashMap)
 	for k, v := range content.Data {
+		item := make(power.HashMap, len(v))
 		for k1, v1 := range v {
-			data[k] = power.HashMap{
-				k1: v1,
-			}
+			item[k1] = v1
 		}
+		data[k] = item
 	}
 
 	resp, err := wxMiniApp.MiniProgramApp.SubscribeMessage.Send(ctx, &request.RequestSubscribeMessageSend{
