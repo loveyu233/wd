@@ -12,6 +12,27 @@ type Field[T any] struct {
 	Value T
 }
 
+type patchFieldValidationMarker interface {
+	isPatchFieldValidationMarker()
+	patchFieldValidationSet() bool
+	patchFieldValidationNull() bool
+	patchFieldValidationValue() any
+}
+
+func (f Field[T]) isPatchFieldValidationMarker() {}
+
+func (f Field[T]) patchFieldValidationSet() bool {
+	return f.Set
+}
+
+func (f Field[T]) patchFieldValidationNull() bool {
+	return f.Null
+}
+
+func (f Field[T]) patchFieldValidationValue() any {
+	return f.Value
+}
+
 // IsSet 用来判断字段是否在请求中显式出现过。
 func (f Field[T]) IsSet() bool {
 	return f.Set

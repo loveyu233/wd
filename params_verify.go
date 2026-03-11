@@ -22,6 +22,8 @@ var (
 
 // init 初始化验证器、翻译器以及自定义规则。
 func init() {
+	binding.Validator = &patchFieldStructValidator{}
+
 	v, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {
 		panic("无法找到验证器")
