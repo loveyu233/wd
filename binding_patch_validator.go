@@ -204,7 +204,7 @@ func dereferenceValidationValue(value reflect.Value) reflect.Value {
 }
 
 func patchFieldBindingTag(bindingTag string, marker patchFieldValidationMarker) string {
-	if marker.patchFieldValidationSet() && !marker.patchFieldValidationNull() {
+	if marker.patchFieldValidationSet() {
 		return bindingTag
 	}
 	if !shouldInjectPatchFieldOmitEmpty(bindingTag) {
