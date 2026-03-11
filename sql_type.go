@@ -117,6 +117,15 @@ func unmarshalCustomTime[T customTimeType](dst *T, data []byte, parse stringTime
 	return setParsedCustomTime(dst, value, parse)
 }
 
+func unmarshalCustomTimeParam[T customTimeType](dst *T, param string, parse stringTimeParser) error {
+	param = strings.TrimSpace(param)
+	if param == "" {
+		resetCustomTime(dst)
+		return nil
+	}
+	return setParsedCustomTime(dst, param, parse)
+}
+
 func normalizedCustomTime[T customTimeType](value T, normalize timeNormalizer) time.Time {
 	return normalize(time.Time(value))
 }
@@ -169,6 +178,11 @@ func (dt *DateTime) UnmarshalJSON(data []byte) error {
 	return unmarshalCustomTime(dt, data, parseDateTimeString)
 }
 
+// UnmarshalParam 用来解析 form/query 参数到 DateTime。
+func (dt *DateTime) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(dt, param, parseDateTimeString)
+}
+
 // ========== DateOnly 序列化 ==========
 
 // Scan 用来从数据库的各种类型读取 DateOnly。
@@ -199,6 +213,11 @@ func (d DateOnly) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON 用来从 JSON 字符串解析 DateOnly。
 func (d *DateOnly) UnmarshalJSON(data []byte) error {
 	return unmarshalCustomTime(d, data, parseDateOnlyString)
+}
+
+// UnmarshalParam 用来解析 form/query 参数到 DateOnly。
+func (d *DateOnly) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(d, param, parseDateOnlyString)
 }
 
 // ========== TimeOnly 序列化 ==========
@@ -233,6 +252,11 @@ func (t *TimeOnly) UnmarshalJSON(data []byte) error {
 	return unmarshalCustomTime(t, data, parseTimeOnlyString)
 }
 
+// UnmarshalParam 用来解析 form/query 参数到 TimeOnly。
+func (t *TimeOnly) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(t, param, parseTimeOnlyString)
+}
+
 // ========== TimeHourMinute 序列化 ==========
 
 // Scan 用来将数据库值解析为 TimeHourMinute。
@@ -263,4 +287,9 @@ func (t TimeHourMinute) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON 用来解析 JSON 字符串到 TimeHourMinute。
 func (t *TimeHourMinute) UnmarshalJSON(data []byte) error {
 	return unmarshalCustomTime(t, data, parseTimeHourMinuteString)
+}
+
+// UnmarshalParam 用来解析 form/query 参数到 TimeHourMinute。
+func (t *TimeHourMinute) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(t, param, parseTimeHourMinuteString)
 }
