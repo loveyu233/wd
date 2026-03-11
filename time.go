@@ -1,15 +1,51 @@
 package wd
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/araddon/dateparse"
 )
 
+// ========== 基础配置 ==========
+
 var (
 	ShangHaiTimeLocation *time.Location
+
+	dateTimeParseLayouts = []string{
+		CSTLayout,
+		CSTLayoutDateHourMinutes,
+		CSTLayoutDate,
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	dateOnlyParseLayouts = []string{
+		CSTLayoutDate,
+		CSTLayout,
+		CSTLayoutDateHourMinutes,
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	timeOnlyParseLayouts = []string{
+		CSTLayoutTime,
+		CSTLayoutTimeHourMinutes,
+	}
+	timeHourMinuteParseLayouts = []string{
+		CSTLayoutTimeHourMinutes,
+		CSTLayoutTime,
+	}
 )
+
+type timeNormalizer func(time.Time) time.Time
+type stringTimeParser func(string) (time.Time, error)
+type customTimeType interface {
+	DateTime | DateOnly | TimeOnly | TimeHourMinute
+}
+type timeValuer interface {
+	Time() time.Time
+}
 
 const (
 	CSTLayout                       = "2006-01-02 15:04:05"
@@ -43,6 +79,184 @@ func init() {
 	time.Local = ShangHaiTimeLocation
 }
 
+// ========== 基础时间构造 ==========
+
+func buildDateOnlyTime(year int, month time.Month, day int) time.Time {
+	return time.Date(year, month, day, 0, 0, 0, 0, ShangHaiTimeLocation)
+}
+
+func buildTimeOnlyTime(hour, minute, second, nanosecond int) time.Time {
+	return time.Date(1970, 1, 1, hour, minute, second, nanosecond, ShangHaiTimeLocation)
+}
+
+func buildTimeHourMinuteTime(hour, minute int) time.Time {
+	return buildTimeOnlyTime(hour, minute, 0, 0)
+}
+
+func buildClockDuration(hours, minutes, seconds int) time.Duration {
+	return time.Duration(hours)*time.Hour +
+		time.Duration(minutes)*time.Minute +
+		time.Duration(seconds)*time.Second
+}
+
+// ========== 归一化与解析 ==========
+
+func normalizeToShanghai(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return value.In(ShangHaiTimeLocation)
+}
+
+func normalizeDateOnlyValue(value time.Time) time.Time {
+	value = normalizeToShanghai(value)
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return buildDateOnlyTime(value.Year(), value.Month(), value.Day())
+}
+
+func normalizeTimeOnlyValue(value time.Time) time.Time {
+	value = normalizeToShanghai(value)
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return buildTimeOnlyTime(value.Hour(), value.Minute(), value.Second(), value.Nanosecond())
+}
+
+func normalizeTimeHourMinuteValue(value time.Time) time.Time {
+	value = normalizeToShanghai(value)
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return buildTimeHourMinuteTime(value.Hour(), value.Minute())
+}
+
+func formatTimeValue(value time.Time, layout string) string {
+	value = normalizeToShanghai(value)
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(layout)
+}
+
+func parseStringValue(
+	value string,
+	layouts []string,
+	normalize timeNormalizer,
+	emptyMessage string,
+	invalidFormat string,
+	fallback stringTimeParser,
+) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New(emptyMessage)
+	}
+
+	for _, layout := range layouts {
+		parsed, err := time.ParseInLocation(layout, value, ShangHaiTimeLocation)
+		if err == nil {
+			return normalize(parsed), nil
+		}
+	}
+
+	if fallback != nil {
+		parsed, err := fallback(value)
+		if err == nil {
+			return normalize(parsed), nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf(invalidFormat, value)
+}
+
+func parseDateTimeString(value string) (time.Time, error) {
+	return parseStringValue(
+		value,
+		dateTimeParseLayouts,
+		normalizeToShanghai,
+		"类型转换错误：日期时间不能为空",
+		"类型转换错误：无法解析日期时间 %q",
+		ParseFuzzyTime,
+	)
+}
+
+func parseDateOnlyString(value string) (time.Time, error) {
+	return parseStringValue(
+		value,
+		dateOnlyParseLayouts,
+		normalizeDateOnlyValue,
+		"类型转换错误：日期不能为空",
+		"无法解析日期格式: %q",
+		nil,
+	)
+}
+
+func parseTimeOnlyString(value string) (time.Time, error) {
+	return parseStringValue(
+		value,
+		timeOnlyParseLayouts,
+		normalizeTimeOnlyValue,
+		"类型转换错误：时间不能为空",
+		"无法解析时间格式: %q",
+		nil,
+	)
+}
+
+func parseTimeHourMinuteString(value string) (time.Time, error) {
+	return parseStringValue(
+		value,
+		timeHourMinuteParseLayouts,
+		normalizeTimeHourMinuteValue,
+		"类型转换错误：时间不能为空",
+		"无法解析时间格式: %q",
+		nil,
+	)
+}
+
+func newParsedTimeValue[T customTimeType](value string, parse stringTimeParser, convert func(time.Time) T) (*T, error) {
+	parsed, err := parse(value)
+	if err != nil {
+		return nil, err
+	}
+	result := convert(parsed)
+	return &result, nil
+}
+
+func isZeroCustomTime[T customTimeType](value T) bool {
+	return time.Time(value).IsZero()
+}
+
+func describeRelativeDateValue[T timeValuer](value T) string {
+	return DescribeRelativeDate(value.Time())
+}
+
+func addDateToCustomTime[T timeValuer](value T, years, months, days int, convert func(time.Time) T) T {
+	return convert(value.Time().AddDate(years, months, days))
+}
+
+func addDurationToCustomTime[T timeValuer](value T, delta time.Duration, convert func(time.Time) T) T {
+	return convert(value.Time().Add(delta))
+}
+
+func beforeTimeValue[T timeValuer](left, right T) bool {
+	return left.Time().Before(right.Time())
+}
+
+func afterTimeValue[T timeValuer](left, right T) bool {
+	return left.Time().After(right.Time())
+}
+
+func equalTimeValue[T timeValuer](left, right T) bool {
+	return left.Time().Equal(right.Time())
+}
+
+func subTimeValue[T timeValuer](left, right T) time.Duration {
+	return left.Time().Sub(right.Time())
+}
+
+// ========== 当前时间快捷方法 ==========
+
 // Now 返回当前上海时区的时间。
 func Now() time.Time {
 	return time.Now().In(ShangHaiTimeLocation)
@@ -71,50 +285,272 @@ func NowTimeString() string {
 
 // NowAsDateTime 返回当前时间的 DateTime 封装类型。
 func NowAsDateTime() DateTime {
-	return DateTime(Now())
+	return ToDateTime(Now())
 }
 
 // NowAsDateOnly 返回当天零点的 DateOnly 封装类型。
 func NowAsDateOnly() DateOnly {
-	now := Now()
-	return DateOnly(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, ShangHaiTimeLocation))
+	return ToDateOnly(Now())
 }
 
 // NowAsTimeOnly 返回当前时间的 TimeOnly 封装类型。
 func NowAsTimeOnly() TimeOnly {
-	now := Now()
-	return TimeOnly(time.Date(0, 0, 0, now.Hour(), now.Minute(), now.Second(), 0, ShangHaiTimeLocation))
+	return ToTimeOnly(Now())
 }
 
 // NowAsHourMinute 返回当前时间的时分部分。
 func NowAsHourMinute() TimeHourMinute {
-	now := Now()
-	return TimeHourMinute(time.Date(0, 0, 0, now.Hour(), now.Minute(), 0, 0, ShangHaiTimeLocation))
+	return ToTimeHourMinute(Now())
 }
 
 // ToDateTime 将标准 time.Time 转为 DateTime 类型。
 func ToDateTime(t time.Time) DateTime {
-	return DateTime(t)
+	return DateTime(normalizeToShanghai(t))
 }
 
 // ToDateOnly 将 time.Time 转为 DateOnly，只保留日期部分。
 func ToDateOnly(t time.Time) DateOnly {
-	return DateOnly(t)
+	return DateOnly(normalizeDateOnlyValue(t))
 }
 
 // ToTimeOnly 将 time.Time 转为 TimeOnly，只保留时间部分。
 func ToTimeOnly(t time.Time) TimeOnly {
-	return TimeOnly(t)
+	return TimeOnly(normalizeTimeOnlyValue(t))
+}
+
+// ToTimeHourMinute 将 time.Time 转为 TimeHourMinute，只保留时分。
+func ToTimeHourMinute(t time.Time) TimeHourMinute {
+	return TimeHourMinute(normalizeTimeHourMinuteValue(t))
 }
 
 // ToTimeOnlyTrimSeconds 将 time.Time 转为无秒的 TimeOnly。
 func ToTimeOnlyTrimSeconds(t time.Time) TimeOnly {
-	return TimeOnly(time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, ShangHaiTimeLocation))
+	t = normalizeToShanghai(t)
+	if t.IsZero() {
+		return TimeOnly{}
+	}
+	return TimeOnly(buildTimeHourMinuteTime(t.Hour(), t.Minute()))
 }
+
+// ========== DateTime ==========
+
+// NewDateTimeString 用来从字符串解析 DateTime。
+func NewDateTimeString(dateString string) (*DateTime, error) {
+	return newParsedTimeValue[DateTime](dateString, parseDateTimeString, ToDateTime)
+}
+
+// ToDateOnly 用来把完整的 DateTime 取整到日期。
+func (dt DateTime) ToDateOnly() DateOnly {
+	return ToDateOnly(dt.Time())
+}
+
+// ToTimeOnly 用来提取 DateTime 的时分秒部分。
+func (dt DateTime) ToTimeOnly() TimeOnly {
+	return ToTimeOnly(dt.Time())
+}
+
+// ToTimeHourMinute 用来将 DateTime 精确到分钟。
+func (dt DateTime) ToTimeHourMinute() TimeHourMinute {
+	return ToTimeHourMinute(dt.Time())
+}
+
+// Time 用来返回标准库 time.Time 表示。
+func (dt DateTime) Time() time.Time {
+	return normalizeToShanghai(time.Time(dt))
+}
+
+// IsZero 用来判断 DateTime 是否为零值。
+func (dt DateTime) IsZero() bool {
+	return isZeroCustomTime(dt)
+}
+
+// FormatRelativeDate 用来把日期描述为相对时间。
+func (dt DateTime) FormatRelativeDate() string {
+	return describeRelativeDateValue(dt)
+}
+
+// ========== DateOnly ==========
+
+// NewDateOnly 用来创建一个只有日期的值。
+func NewDateOnly(year int, month time.Month, day int) DateOnly {
+	return ToDateOnly(buildDateOnlyTime(year, month, day))
+}
+
+// NewDateOnlyString 用来从字符串解析 DateOnly。
+func NewDateOnlyString(dateString string) (*DateOnly, error) {
+	return newParsedTimeValue[DateOnly](dateString, parseDateOnlyString, ToDateOnly)
+}
+
+// ToDateTime 用来把 DateOnly 转换回 DateTime。
+func (d DateOnly) ToDateTime() DateTime {
+	return ToDateTime(d.Time())
+}
+
+// ToTimeOnly 用来把 DateOnly 视作仅有时间的类型。
+func (d DateOnly) ToTimeOnly() TimeOnly {
+	return ToTimeOnly(time.Time(d))
+}
+
+// ToTimeHourMinute 用来把 DateOnly 转成小时分钟类型。
+func (d DateOnly) ToTimeHourMinute() TimeHourMinute {
+	return ToTimeHourMinute(time.Time(d))
+}
+
+// Time 用来返回标准库 time.Time 表示。
+func (d DateOnly) Time() time.Time {
+	return normalizeDateOnlyValue(time.Time(d))
+}
+
+// IsZero 用来判断 DateOnly 是否为零值。
+func (d DateOnly) IsZero() bool {
+	return isZeroCustomTime(d)
+}
+
+// FormatRelativeDate 用来把日期描述为相对时间。
+func (d DateOnly) FormatRelativeDate() string {
+	return describeRelativeDateValue(d)
+}
+
+// AddDays 用来在日期上增加或减少天数。
+func (d DateOnly) AddDays(days int) DateOnly {
+	return addDateToCustomTime[DateOnly](d, 0, 0, days, ToDateOnly)
+}
+
+// ========== TimeOnly ==========
+
+// NewTimeOnly 用来创建只包含时间部分的值。
+func NewTimeOnly(hour, minute, second int) TimeOnly {
+	return ToTimeOnly(buildTimeOnlyTime(hour, minute, second, 0))
+}
+
+// NewTimeOnlyString 用来从 HH:MM:SS 字符串解析 TimeOnly。
+func NewTimeOnlyString(timeString string) (*TimeOnly, error) {
+	return newParsedTimeValue[TimeOnly](timeString, parseTimeOnlyString, ToTimeOnly)
+}
+
+// ToTimeHourMinute 用来把 TimeOnly 精确到分钟。
+func (t TimeOnly) ToTimeHourMinute() TimeHourMinute {
+	return ToTimeHourMinute(t.Time())
+}
+
+// ToDateOnly 用来把 TimeOnly 当作日期值返回。
+func (t TimeOnly) ToDateOnly() DateOnly {
+	return ToDateOnly(time.Time(t))
+}
+
+// ToDateTime 用来把 TimeOnly 转成 DateTime。
+func (t TimeOnly) ToDateTime() DateTime {
+	return ToDateTime(t.Time())
+}
+
+// Time 用来返回等价的 time.Time 值。
+func (t TimeOnly) Time() time.Time {
+	return normalizeTimeOnlyValue(time.Time(t))
+}
+
+// IsZero 用来判断时间值是否为零。
+func (t TimeOnly) IsZero() bool {
+	return isZeroCustomTime(t)
+}
+
+// AddTime 用来在时间上增加指定的时分秒。
+func (t TimeOnly) AddTime(hours, minutes, seconds int) TimeOnly {
+	return addDurationToCustomTime[TimeOnly](t,
+		buildClockDuration(hours, minutes, seconds),
+		ToTimeOnly,
+	)
+}
+
+// Before 用来判断当前时间是否早于另一个时间。
+func (t TimeOnly) Before(other TimeOnly) bool {
+	return beforeTimeValue(t, other)
+}
+
+// After 用来判断当前时间是否晚于另一个时间。
+func (t TimeOnly) After(other TimeOnly) bool {
+	return afterTimeValue(t, other)
+}
+
+// Equal 用来比较两个时间是否相同。
+func (t TimeOnly) Equal(other TimeOnly) bool {
+	return equalTimeValue(t, other)
+}
+
+// Sub 用来计算两个时间的时间差。
+func (t TimeOnly) Sub(other TimeOnly) time.Duration {
+	return subTimeValue(t, other)
+}
+
+// ========== TimeHourMinute ==========
+
+// NewTimeHourMinute 用来创建只包含小时和分钟的时间。
+func NewTimeHourMinute(hour, minute int) TimeHourMinute {
+	return ToTimeHourMinute(buildTimeHourMinuteTime(hour, minute))
+}
+
+// NewTimeHourMinuteString 用来从 HH:MM 字符串解析 TimeHourMinute。
+func NewTimeHourMinuteString(timeString string) (*TimeHourMinute, error) {
+	return newParsedTimeValue[TimeHourMinute](timeString, parseTimeHourMinuteString, ToTimeHourMinute)
+}
+
+// ToTimeOnly 用来从 TimeHourMinute 获取包含秒的时间。
+func (t TimeHourMinute) ToTimeOnly() TimeOnly {
+	return ToTimeOnly(t.Time())
+}
+
+// ToDateTime 用来把 TimeHourMinute 转换为 DateTime。
+func (t TimeHourMinute) ToDateTime() DateTime {
+	return ToDateTime(t.Time())
+}
+
+// ToDateOnly 用来把 TimeHourMinute 转换为 DateOnly。
+func (t TimeHourMinute) ToDateOnly() DateOnly {
+	return ToDateOnly(time.Time(t))
+}
+
+// Time 用来返回等价的 time.Time 值。
+func (t TimeHourMinute) Time() time.Time {
+	return normalizeTimeHourMinuteValue(time.Time(t))
+}
+
+// IsZero 用来判断时间是否为空值。
+func (t TimeHourMinute) IsZero() bool {
+	return isZeroCustomTime(t)
+}
+
+// AddTime 用来为小时分钟值增加时长。
+func (t TimeHourMinute) AddTime(hours, minutes int) TimeHourMinute {
+	return addDurationToCustomTime[TimeHourMinute](t,
+		buildClockDuration(hours, minutes, 0),
+		ToTimeHourMinute,
+	)
+}
+
+// Before 用来判断当前值是否早于另一个值。
+func (t TimeHourMinute) Before(other TimeHourMinute) bool {
+	return beforeTimeValue(t, other)
+}
+
+// After 用来判断当前值是否晚于另一个值。
+func (t TimeHourMinute) After(other TimeHourMinute) bool {
+	return afterTimeValue(t, other)
+}
+
+// Equal 用来比较两个时刻是否相同。
+func (t TimeHourMinute) Equal(other TimeHourMinute) bool {
+	return equalTimeValue(t, other)
+}
+
+// Sub 用来计算两个小时分钟值之间的差。
+func (t TimeHourMinute) Sub(other TimeHourMinute) time.Duration {
+	return subTimeValue(t, other)
+}
+
+// ========== 通用解析与格式化 ==========
 
 // ParseDateTime 解析标准日期时间字符串为 time.Time。
 func ParseDateTime(value string) (time.Time, error) {
-	return time.ParseInLocation(CSTLayout, value, ShangHaiTimeLocation)
+	return parseDateTimeString(value)
 }
 
 // ParseDateTimeValue 解析字符串并返回 DateTime 类型。
@@ -123,7 +559,7 @@ func ParseDateTimeValue(value string) (DateTime, error) {
 	if err != nil {
 		return DateTime{}, err
 	}
-	return DateTime(parsed), nil
+	return ToDateTime(parsed), nil
 }
 
 // MustParseDateTimeValue 解析字符串为 DateTime，失败返回零值。
@@ -132,12 +568,12 @@ func MustParseDateTimeValue(value string) DateTime {
 	if err != nil {
 		return DateTime{}
 	}
-	return DateTime(parsed)
+	return ToDateTime(parsed)
 }
 
 // ParseDate 解析日期字符串为 time.Time。
 func ParseDate(value string) (time.Time, error) {
-	return time.ParseInLocation(CSTLayoutDate, value, ShangHaiTimeLocation)
+	return parseDateOnlyString(value)
 }
 
 // MustParseDate 解析日期字符串，失败返回零值。
@@ -151,19 +587,19 @@ func MustParseDate(value string) time.Time {
 
 // ParseDateOnly 解析日期字符串为 DateOnly。
 func ParseDateOnly(value string) (DateOnly, error) {
-	parsed, err := ParseDate(value)
+	parsed, err := parseDateOnlyString(value)
 	if err != nil {
 		return DateOnly{}, err
 	}
-	return DateOnly(parsed), nil
+	return ToDateOnly(parsed), nil
 }
 
 // ParseTimeClock 解析时间字符串为 time.Time。
 func ParseTimeClock(value string) (time.Time, error) {
-	return time.ParseInLocation(CSTLayoutTime, value, ShangHaiTimeLocation)
+	return parseTimeOnlyString(value)
 }
 func ParseHourMinuteClock(value string) (time.Time, error) {
-	return time.ParseInLocation(CSTLayoutTimeHourMinutes, value, ShangHaiTimeLocation)
+	return parseTimeHourMinuteString(value)
 }
 
 // MustParseClock 解析时间字符串，失败返回零值。
@@ -177,20 +613,20 @@ func MustParseClock(value string) time.Time {
 
 // ParseTimeOnly 解析时间字符串为 TimeOnly。
 func ParseTimeOnly(value string) (TimeOnly, error) {
-	parsed, err := ParseTimeClock(value)
+	parsed, err := parseTimeOnlyString(value)
 	if err != nil {
 		return TimeOnly{}, err
 	}
-	return TimeOnly(parsed), nil
+	return ToTimeOnly(parsed), nil
 }
 
 // ParseHourMinute 解析时间字符串并返回时分结构。
 func ParseHourMinute(value string) (TimeHourMinute, error) {
-	parsed, err := ParseHourMinuteClock(value)
+	parsed, err := parseTimeHourMinuteString(value)
 	if err != nil {
 		return TimeHourMinute{}, err
 	}
-	return TimeHourMinute(time.Date(parsed.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), 0, 0, ShangHaiTimeLocation)), nil
+	return ToTimeHourMinute(parsed), nil
 }
 
 // ParseDateAndTimePointer 将日期与时间字符串组合为可选的 time.Time 指针。
@@ -210,7 +646,7 @@ func ParseDateAndTimePointer(date string, hourMinuteSecond string) (*time.Time, 
 
 // FormatDateTime 以标准格式输出 time.Time。
 func FormatDateTime(t time.Time) string {
-	return t.In(ShangHaiTimeLocation).Format(CSTLayout)
+	return formatTimeValue(t, CSTLayout)
 }
 
 // ParseFuzzyTime 使用 dateparse 模糊解析时间。
@@ -231,7 +667,7 @@ func FormatDatePointer(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
-	return t.In(ShangHaiTimeLocation).Format(CSTLayoutDate)
+	return formatTimeValue(normalizeDateOnlyValue(*t), CSTLayoutDate)
 }
 
 // ParseDateTimePointer 解析日期时间字符串并返回指针。
@@ -270,7 +706,7 @@ func UnixFromTime(t time.Time) int {
 
 // FormatUnixDateTime 将 Unix 秒格式化为日期字符串。
 func FormatUnixDateTime(unix int64) string {
-	return time.Unix(unix, 0).In(ShangHaiTimeLocation).Format(CSTLayout)
+	return formatTimeValue(time.Unix(unix, 0), CSTLayout)
 }
 
 // NowUnix 返回当前时间的 Unix 秒。
@@ -302,6 +738,8 @@ func IsAfterMinutesAgo(t time.Time, minutes int) bool {
 func NowSubHours(hours int) time.Time {
 	return Now().Add(-time.Duration(hours) * time.Hour)
 }
+
+// ========== 描述与范围工具 ==========
 
 // DescribeRelativeDate 返回日期相对于今天的中文描述。
 func DescribeRelativeDate(input time.Time) string {
@@ -479,19 +917,31 @@ func HasTimeConflictReturnIDS(ranges ...TimeRange) []uint64 {
 }
 
 func beginningOfDay(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, ShangHaiTimeLocation)
+	t = normalizeToShanghai(t)
+	if t.IsZero() {
+		return time.Time{}
+	}
+	return buildDateOnlyTime(t.Year(), t.Month(), t.Day())
 }
 
 func beginningOfMonth(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, ShangHaiTimeLocation)
+	t = normalizeToShanghai(t)
+	if t.IsZero() {
+		return time.Time{}
+	}
+	return buildDateOnlyTime(t.Year(), t.Month(), 1)
 }
 
 func beginningOfYear(t time.Time) time.Time {
-	return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, ShangHaiTimeLocation)
+	t = normalizeToShanghai(t)
+	if t.IsZero() {
+		return time.Time{}
+	}
+	return buildDateOnlyTime(t.Year(), 1, 1)
 }
 
 func buildRange(start, end time.Time) (DateTime, DateTime) {
-	return DateTime(start), DateTime(end)
+	return ToDateTime(start), ToDateTime(end)
 }
 
 // GetDay 获取指定时间t的天数
@@ -499,20 +949,4 @@ func GetDay(t time.Time) int {
 	y, m, d := t.Date()
 	dayOfYear := time.Date(y, m, d, 0, 0, 0, 0, ShangHaiTimeLocation).YearDay()
 	return y*365 + y/4 - y/100 + y/400 + dayOfYear
-}
-
-// GetCalculationDay 用于获取时间经过指定的计算后的结果值
-func GetCalculationDay(dateOnly DateOnly, period string) uint32 {
-	day := GetDay(dateOnly.Time()) * 4
-	switch period {
-	case "早上":
-		day += 1
-	case "上午":
-		day += 2
-	case "下午":
-		day += 3
-	case "晚上":
-		day += 4
-	}
-	return uint32(day)
 }
