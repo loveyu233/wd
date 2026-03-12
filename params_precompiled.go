@@ -22,12 +22,7 @@ func hasOptionalParsedValue[T optionalParsedValue](value *T) bool {
 	return value != nil && !(*value).IsZero()
 }
 
-type optionalCustomTimeValue interface {
-	CustomTime
-	IsZero() bool
-}
-
-type ReqRange[T optionalCustomTimeValue] struct {
+type ReqRange[T CustomTime] struct {
 	Start *T `json:"start" form:"start"`
 	End   *T `json:"end" form:"end"`
 }
@@ -50,11 +45,11 @@ func (req *ReqRange[T]) WhereExpr(table schema.Tabler, column field.IColumnName)
 	return genOptionalRangeWhere(table, column, req.Start, req.End)
 }
 
-func hasOptionalRangeValue[T optionalCustomTimeValue](start, end *T) bool {
+func hasOptionalRangeValue[T CustomTime](start, end *T) bool {
 	return hasOptionalParsedValue(start) && hasOptionalParsedValue(end)
 }
 
-func validateOptionalRangeValue[T optionalCustomTimeValue](start, end *T) error {
+func validateOptionalRangeValue[T CustomTime](start, end *T) error {
 	if !hasOptionalRangeValue(start, end) {
 		return nil
 	}
@@ -64,7 +59,7 @@ func validateOptionalRangeValue[T optionalCustomTimeValue](start, end *T) error 
 	return nil
 }
 
-func genOptionalRangeWhere[T optionalCustomTimeValue](table schema.Tabler, column field.IColumnName, start, end *T) (field.Expr, error) {
+func genOptionalRangeWhere[T CustomTime](table schema.Tabler, column field.IColumnName, start, end *T) (field.Expr, error) {
 	if !hasOptionalRangeValue(start, end) {
 		return nil, nil
 	}
