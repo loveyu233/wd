@@ -260,9 +260,9 @@ func (t *TimeOnly) UnmarshalParam(param string) error {
 
 // ========== TimeHourMinute 序列化 ==========
 
-// Scan 用来将数据库值解析为 TimeHourMinute。
+// Scan 用来将数据库值解析为 TimeHourMinute。因为数据库中没有这种类型，所以使用普通时间类型来映射
 func (t *TimeHourMinute) Scan(v interface{}) error {
-	return scanCustomTime(t, v, parseTimeHourMinuteString, normalizeTimeHourMinuteValue, "时间")
+	return scanCustomTime(t, v, parseTimeOnlyString, normalizeTimeHourMinuteValue, "时间")
 }
 
 // Value 用来将 TimeHourMinute 写入数据库。
