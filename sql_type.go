@@ -37,10 +37,10 @@ func (d TimeOnly) Type() string {
 	return "time_only"
 }
 
-// TimeHourMinute 只有小时分钟的时间类型 (HH:MM)
-type TimeHourMinute time.Time
+// TimeHM 只有小时分钟的时间类型 (HH:MM)
+type TimeHM time.Time
 
-func (d TimeHourMinute) Type() string {
+func (d TimeHM) Type() string {
 	return "time_hour_minute"
 }
 
@@ -258,39 +258,39 @@ func (t *TimeOnly) UnmarshalParam(param string) error {
 	return unmarshalCustomTimeParam(t, param, parseTimeOnlyString)
 }
 
-// ========== TimeHourMinute 序列化 ==========
+// ========== TimeHM 序列化 ==========
 
-// Scan 用来将数据库值解析为 TimeHourMinute。因为数据库中没有这种类型，所以使用普通时间类型来映射
-func (t *TimeHourMinute) Scan(v interface{}) error {
-	return scanCustomTime(t, v, parseTimeOnlyString, normalizeTimeHourMinuteValue, "时间")
+// Scan 用来将数据库值解析为 TimeHM。因为数据库中没有这种类型，所以使用普通时间类型来映射
+func (t *TimeHM) Scan(v interface{}) error {
+	return scanCustomTime(t, v, parseTimeOnlyString, normalizeTimeHMValue, "时间")
 }
 
-// Value 用来将 TimeHourMinute 写入数据库。
-func (t TimeHourMinute) Value() (driver.Value, error) {
-	return valueSQLTime(t, CSTLayoutTimeHourMinutes, normalizeTimeHourMinuteValue)
+// Value 用来将 TimeHM 写入数据库。
+func (t TimeHM) Value() (driver.Value, error) {
+	return valueSQLTime(t, CSTLayoutTimeHM, normalizeTimeHMValue)
 }
 
 // String 用来输出 HH:MM 字符串。
-func (t TimeHourMinute) String() string {
-	return formatSQLTime(t, CSTLayoutTimeHourMinutes, normalizeTimeHourMinuteValue)
+func (t TimeHM) String() string {
+	return formatSQLTime(t, CSTLayoutTimeHM, normalizeTimeHMValue)
 }
 
 // Format 用来自定义小时分钟的输出格式。
-func (t TimeHourMinute) Format(layout string) string {
-	return formatSQLTime(t, layout, normalizeTimeHourMinuteValue)
+func (t TimeHM) Format(layout string) string {
+	return formatSQLTime(t, layout, normalizeTimeHMValue)
 }
 
-// MarshalJSON 用来把 TimeHourMinute 序列化为 JSON 文本。
-func (t TimeHourMinute) MarshalJSON() ([]byte, error) {
-	return marshalSQLTime(t, CSTLayoutTimeHourMinutes, normalizeTimeHourMinuteValue)
+// MarshalJSON 用来把 TimeHM 序列化为 JSON 文本。
+func (t TimeHM) MarshalJSON() ([]byte, error) {
+	return marshalSQLTime(t, CSTLayoutTimeHM, normalizeTimeHMValue)
 }
 
-// UnmarshalJSON 用来解析 JSON 字符串到 TimeHourMinute。
-func (t *TimeHourMinute) UnmarshalJSON(data []byte) error {
-	return unmarshalCustomTime(t, data, parseTimeHourMinuteString)
+// UnmarshalJSON 用来解析 JSON 字符串到 TimeHM。
+func (t *TimeHM) UnmarshalJSON(data []byte) error {
+	return unmarshalCustomTime(t, data, parseTimeHMString)
 }
 
-// UnmarshalParam 用来解析 form/query 参数到 TimeHourMinute。
-func (t *TimeHourMinute) UnmarshalParam(param string) error {
-	return unmarshalCustomTimeParam(t, param, parseTimeHourMinuteString)
+// UnmarshalParam 用来解析 form/query 参数到 TimeHM。
+func (t *TimeHM) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(t, param, parseTimeHMString)
 }

@@ -35,14 +35,14 @@ type StructGormIDPtrTimeOnly struct {
 	TimeOnly *TimeOnly `gorm:"column:time_only"`
 }
 
-type StructGormIDTimeHourMinute struct {
-	ID             uint64         `gorm:"column:id"`
-	TimeHourMinute TimeHourMinute `gorm:"column:time_hour_minute"`
+type StructGormIDTimeHM struct {
+	ID     uint64 `gorm:"column:id"`
+	TimeHM TimeHM `gorm:"column:time_hm"`
 }
 
-type StructGormIDPtrTimeHourMinute struct {
-	ID             uint64          `gorm:"column:id"`
-	TimeHourMinute *TimeHourMinute `gorm:"column:time_hour_minute"`
+type StructGormIDPtrTimeHM struct {
+	ID     uint64  `gorm:"column:id"`
+	TimeHM *TimeHM `gorm:"column:time_hm"`
 }
 
 type StructGormIDDataTwo struct {

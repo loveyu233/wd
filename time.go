@@ -18,30 +18,30 @@ var (
 type timeNormalizer func(time.Time) time.Time
 type stringTimeParser func(string) (time.Time, error)
 type customTimeType interface {
-	DateTime | DateOnly | TimeOnly | TimeHourMinute
+	DateTime | DateOnly | TimeOnly | TimeHM
 }
 type timeValuer interface {
 	Time() time.Time
 }
 
 const (
-	CSTLayout                       = "2006-01-02 15:04:05"
-	CSTLayoutChinese                = "2006年01月02日 15:04:05"
-	CSTLayoutPoint                  = "2006.01.02 15:04:05"
-	CSTLayoutDate                   = "2006-01-02"
-	CSTLayoutDateChinese            = "2006年01月02日"
-	CSTLayoutDatePoint              = "2006.01.02"
-	CSTLayoutTime                   = "15:04:05"
-	CSTLayoutTimeHourMinutes        = "15:04"
-	CSTLayoutDateHourMinutes        = "2006-01-02 15:04"
-	CSTLayoutDateHourMinutesChinese = "2006年01月02日 15:04"
-	CSTLayoutDateHourMinutesPoint   = "2006.01.02 15:04"
-	CSTLayoutYearMonth              = "2006-01"
-	CSTLayoutYearMonthChinese       = "2006年01月"
-	CSTLayoutYearMonthPoint         = "2006.01.02"
-	CSTLayoutSecond                 = "20060102150405"
-	DateDirLayout                   = "2006/0101"
-	DateDirsLayout                  = "2006/01/01"
+	CSTLayout                 = "2006-01-02 15:04:05"
+	CSTLayoutChinese          = "2006年01月02日 15:04:05"
+	CSTLayoutPoint            = "2006.01.02 15:04:05"
+	CSTLayoutDate             = "2006-01-02"
+	CSTLayoutDateChinese      = "2006年01月02日"
+	CSTLayoutDatePoint        = "2006.01.02"
+	CSTLayoutTime             = "15:04:05"
+	CSTLayoutTimeHM           = "15:04"
+	CSTLayoutDateHM           = "2006-01-02 15:04"
+	CSTLayoutDateHMChinese    = "2006年01月02日 15:04"
+	CSTLayoutDateHMPoint      = "2006.01.02 15:04"
+	CSTLayoutYearMonth        = "2006-01"
+	CSTLayoutYearMonthChinese = "2006年01月"
+	CSTLayoutYearMonthPoint   = "2006.01.02"
+	CSTLayoutSecond           = "20060102150405"
+	DateDirLayout             = "2006/0101"
+	DateDirsLayout            = "2006/01/01"
 
 	DayStartTimeStr = "00:00:00"
 	DayEndTimeStr   = "23:59:59"
@@ -66,7 +66,7 @@ func buildTimeOnlyTime(hour, minute, second, nanosecond int) time.Time {
 	return time.Date(1970, 1, 1, hour, minute, second, nanosecond, ShangHaiTimeLocation)
 }
 
-func buildTimeHourMinuteTime(hour, minute int) time.Time {
+func buildTimeHMTime(hour, minute int) time.Time {
 	return buildTimeOnlyTime(hour, minute, 0, 0)
 }
 
@@ -101,12 +101,12 @@ func normalizeTimeOnlyValue(value time.Time) time.Time {
 	return buildTimeOnlyTime(value.Hour(), value.Minute(), value.Second(), value.Nanosecond())
 }
 
-func normalizeTimeHourMinuteValue(value time.Time) time.Time {
+func normalizeTimeHMValue(value time.Time) time.Time {
 	value = normalizeToShanghai(value)
 	if value.IsZero() {
 		return time.Time{}
 	}
-	return buildTimeHourMinuteTime(value.Hour(), value.Minute())
+	return buildTimeHMTime(value.Hour(), value.Minute())
 }
 
 func formatTimeValue(value time.Time, layout string) string {
@@ -157,11 +157,11 @@ func parseTimeOnlyString(value string) (time.Time, error) {
 	)
 }
 
-func parseTimeHourMinuteString(value string) (time.Time, error) {
+func parseTimeHMString(value string) (time.Time, error) {
 	return parseStringValue(
 		value,
-		CSTLayoutTimeHourMinutes,
-		normalizeTimeHourMinuteValue,
+		CSTLayoutTimeHM,
+		normalizeTimeHMValue,
 	)
 }
 
@@ -249,9 +249,9 @@ func NowAsTimeOnly() TimeOnly {
 	return ToTimeOnly(Now())
 }
 
-// NowAsHourMinute 返回当前时间的时分部分。
-func NowAsHourMinute() TimeHourMinute {
-	return ToTimeHourMinute(Now())
+// NowAsTimeHM 返回当前时间的时分部分。
+func NowAsTimeHM() TimeHM {
+	return ToTimeHM(Now())
 }
 
 // ToDateTime 将标准 time.Time 转为 DateTime 类型。
@@ -269,9 +269,9 @@ func ToTimeOnly(t time.Time) TimeOnly {
 	return TimeOnly(normalizeTimeOnlyValue(t))
 }
 
-// ToTimeHourMinute 将 time.Time 转为 TimeHourMinute，只保留时分。
-func ToTimeHourMinute(t time.Time) TimeHourMinute {
-	return TimeHourMinute(normalizeTimeHourMinuteValue(t))
+// ToTimeHM 将 time.Time 转为 TimeHM，只保留时分。
+func ToTimeHM(t time.Time) TimeHM {
+	return TimeHM(normalizeTimeHMValue(t))
 }
 
 // ToTimeOnlyTrimSeconds 将 time.Time 转为无秒的 TimeOnly。
@@ -280,7 +280,7 @@ func ToTimeOnlyTrimSeconds(t time.Time) TimeOnly {
 	if t.IsZero() {
 		return TimeOnly{}
 	}
-	return TimeOnly(buildTimeHourMinuteTime(t.Hour(), t.Minute()))
+	return TimeOnly(buildTimeHMTime(t.Hour(), t.Minute()))
 }
 
 // ========== DateTime ==========
@@ -300,9 +300,9 @@ func (dt DateTime) ToTimeOnly() TimeOnly {
 	return ToTimeOnly(dt.Time())
 }
 
-// ToTimeHourMinute 用来将 DateTime 精确到分钟。
-func (dt DateTime) ToTimeHourMinute() TimeHourMinute {
-	return ToTimeHourMinute(dt.Time())
+// ToTimeHM 用来将 DateTime 精确到分钟。
+func (dt DateTime) ToTimeHM() TimeHM {
+	return ToTimeHM(dt.Time())
 }
 
 // Time 用来返回标准库 time.Time 表示。
@@ -342,9 +342,9 @@ func (d DateOnly) ToTimeOnly() TimeOnly {
 	return ToTimeOnly(time.Time(d))
 }
 
-// ToTimeHourMinute 用来把 DateOnly 转成小时分钟类型。
-func (d DateOnly) ToTimeHourMinute() TimeHourMinute {
-	return ToTimeHourMinute(time.Time(d))
+// ToTimeHM 用来把 DateOnly 转成小时分钟类型。
+func (d DateOnly) ToTimeHM() TimeHM {
+	return ToTimeHM(time.Time(d))
 }
 
 // Time 用来返回标准库 time.Time 表示。
@@ -379,9 +379,9 @@ func NewTimeOnlyString(timeString string) (*TimeOnly, error) {
 	return newParsedTimeValue[TimeOnly](timeString, parseTimeOnlyString, ToTimeOnly)
 }
 
-// ToTimeHourMinute 用来把 TimeOnly 精确到分钟。
-func (t TimeOnly) ToTimeHourMinute() TimeHourMinute {
-	return ToTimeHourMinute(t.Time())
+// ToTimeHM 用来把 TimeOnly 精确到分钟。
+func (t TimeOnly) ToTimeHM() TimeHM {
+	return ToTimeHM(t.Time())
 }
 
 // ToDateOnly 用来把 TimeOnly 当作日期值返回。
@@ -432,68 +432,68 @@ func (t TimeOnly) Sub(other TimeOnly) time.Duration {
 	return subTimeValue(t, other)
 }
 
-// ========== TimeHourMinute ==========
+// ========== TimeHM ==========
 
-// NewTimeHourMinute 用来创建只包含小时和分钟的时间。
-func NewTimeHourMinute(hour, minute int) TimeHourMinute {
-	return ToTimeHourMinute(buildTimeHourMinuteTime(hour, minute))
+// NewTimeHM 用来创建只包含小时和分钟的时间。
+func NewTimeHM(hour, minute int) TimeHM {
+	return ToTimeHM(buildTimeHMTime(hour, minute))
 }
 
-// NewTimeHourMinuteString 用来从 HH:MM 字符串解析 TimeHourMinute。
-func NewTimeHourMinuteString(timeString string) (*TimeHourMinute, error) {
-	return newParsedTimeValue[TimeHourMinute](timeString, parseTimeHourMinuteString, ToTimeHourMinute)
+// NewTimeHMString 用来从 HH:MM 字符串解析 TimeHM。
+func NewTimeHMString(timeString string) (*TimeHM, error) {
+	return newParsedTimeValue[TimeHM](timeString, parseTimeHMString, ToTimeHM)
 }
 
-// ToTimeOnly 用来从 TimeHourMinute 获取包含秒的时间。
-func (t TimeHourMinute) ToTimeOnly() TimeOnly {
+// ToTimeOnly 用来从 TimeHM 获取包含秒的时间。
+func (t TimeHM) ToTimeOnly() TimeOnly {
 	return ToTimeOnly(t.Time())
 }
 
-// ToDateTime 用来把 TimeHourMinute 转换为 DateTime。
-func (t TimeHourMinute) ToDateTime() DateTime {
+// ToDateTime 用来把 TimeHM 转换为 DateTime。
+func (t TimeHM) ToDateTime() DateTime {
 	return ToDateTime(t.Time())
 }
 
-// ToDateOnly 用来把 TimeHourMinute 转换为 DateOnly。
-func (t TimeHourMinute) ToDateOnly() DateOnly {
+// ToDateOnly 用来把 TimeHM 转换为 DateOnly。
+func (t TimeHM) ToDateOnly() DateOnly {
 	return ToDateOnly(time.Time(t))
 }
 
 // Time 用来返回等价的 time.Time 值。
-func (t TimeHourMinute) Time() time.Time {
-	return normalizeTimeHourMinuteValue(time.Time(t))
+func (t TimeHM) Time() time.Time {
+	return normalizeTimeHMValue(time.Time(t))
 }
 
 // IsZero 用来判断时间是否为空值。
-func (t TimeHourMinute) IsZero() bool {
+func (t TimeHM) IsZero() bool {
 	return isZeroCustomTime(t)
 }
 
 // AddTime 用来为小时分钟值增加时长。
-func (t TimeHourMinute) AddTime(hours, minutes int) TimeHourMinute {
-	return addDurationToCustomTime[TimeHourMinute](t,
+func (t TimeHM) AddTime(hours, minutes int) TimeHM {
+	return addDurationToCustomTime[TimeHM](t,
 		buildClockDuration(hours, minutes, 0),
-		ToTimeHourMinute,
+		ToTimeHM,
 	)
 }
 
 // Before 用来判断当前值是否早于另一个值。
-func (t TimeHourMinute) Before(other TimeHourMinute) bool {
+func (t TimeHM) Before(other TimeHM) bool {
 	return beforeTimeValue(t, other)
 }
 
 // After 用来判断当前值是否晚于另一个值。
-func (t TimeHourMinute) After(other TimeHourMinute) bool {
+func (t TimeHM) After(other TimeHM) bool {
 	return afterTimeValue(t, other)
 }
 
 // Equal 用来比较两个时刻是否相同。
-func (t TimeHourMinute) Equal(other TimeHourMinute) bool {
+func (t TimeHM) Equal(other TimeHM) bool {
 	return equalTimeValue(t, other)
 }
 
 // Sub 用来计算两个小时分钟值之间的差。
-func (t TimeHourMinute) Sub(other TimeHourMinute) time.Duration {
+func (t TimeHM) Sub(other TimeHM) time.Duration {
 	return subTimeValue(t, other)
 }
 
@@ -549,8 +549,8 @@ func ParseDateOnly(value string) (DateOnly, error) {
 func ParseTimeClock(value string) (time.Time, error) {
 	return parseTimeOnlyString(value)
 }
-func ParseHourMinuteClock(value string) (time.Time, error) {
-	return parseTimeHourMinuteString(value)
+func ParseTimeHMClock(value string) (time.Time, error) {
+	return parseTimeHMString(value)
 }
 
 // MustParseClock 解析时间字符串，失败返回零值。
@@ -571,13 +571,13 @@ func ParseTimeOnly(value string) (TimeOnly, error) {
 	return ToTimeOnly(parsed), nil
 }
 
-// ParseHourMinute 解析时间字符串并返回时分结构。
-func ParseHourMinute(value string) (TimeHourMinute, error) {
-	parsed, err := parseTimeHourMinuteString(value)
+// ParseTimeHM 解析时间字符串并返回时分结构。
+func ParseTimeHM(value string) (TimeHM, error) {
+	parsed, err := parseTimeHMString(value)
 	if err != nil {
-		return TimeHourMinute{}, err
+		return TimeHM{}, err
 	}
-	return ToTimeHourMinute(parsed), nil
+	return ToTimeHM(parsed), nil
 }
 
 // ParseDateAndTimePointer 将日期与时间字符串组合为可选的 time.Time 指针。
