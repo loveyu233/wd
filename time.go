@@ -13,29 +13,6 @@ import (
 
 var (
 	ShangHaiTimeLocation *time.Location
-
-	dateTimeParseLayouts = []string{
-		CSTLayout,
-		CSTLayoutDateHourMinutes,
-		CSTLayoutDate,
-		time.RFC3339,
-		time.RFC3339Nano,
-	}
-	dateOnlyParseLayouts = []string{
-		CSTLayoutDate,
-		CSTLayout,
-		CSTLayoutDateHourMinutes,
-		time.RFC3339,
-		time.RFC3339Nano,
-	}
-	timeOnlyParseLayouts = []string{
-		CSTLayoutTime,
-		CSTLayoutTimeHourMinutes,
-	}
-	timeHourMinuteParseLayouts = []string{
-		CSTLayoutTimeHourMinutes,
-		CSTLayoutTime,
-	}
 )
 
 type timeNormalizer func(time.Time) time.Time
@@ -142,75 +119,49 @@ func formatTimeValue(value time.Time, layout string) string {
 
 func parseStringValue(
 	value string,
-	layouts []string,
+	layout string,
 	normalize timeNormalizer,
-	emptyMessage string,
-	invalidFormat string,
-	fallback stringTimeParser,
 ) (time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return time.Time{}, errors.New(emptyMessage)
+		return time.Time{}, errors.New("时间不能为空")
 	}
-
-	for _, layout := range layouts {
-		parsed, err := time.ParseInLocation(layout, value, ShangHaiTimeLocation)
-		if err == nil {
-			return normalize(parsed), nil
-		}
+	parsed, err := time.ParseInLocation(layout, value, ShangHaiTimeLocation)
+	if err != nil {
+		return time.Time{}, errors.New("格式错误")
 	}
-
-	if fallback != nil {
-		parsed, err := fallback(value)
-		if err == nil {
-			return normalize(parsed), nil
-		}
-	}
-
-	return time.Time{}, fmt.Errorf(invalidFormat, value)
+	return normalize(parsed), nil
 }
 
 func parseDateTimeString(value string) (time.Time, error) {
 	return parseStringValue(
 		value,
-		dateTimeParseLayouts,
+		CSTLayout,
 		normalizeToShanghai,
-		"类型转换错误：日期时间不能为空",
-		"类型转换错误：无法解析日期时间 %q",
-		ParseFuzzyTime,
 	)
 }
 
 func parseDateOnlyString(value string) (time.Time, error) {
 	return parseStringValue(
 		value,
-		dateOnlyParseLayouts,
+		CSTLayoutDate,
 		normalizeDateOnlyValue,
-		"类型转换错误：日期不能为空",
-		"无法解析日期格式: %q",
-		nil,
 	)
 }
 
 func parseTimeOnlyString(value string) (time.Time, error) {
 	return parseStringValue(
 		value,
-		timeOnlyParseLayouts,
+		CSTLayoutTime,
 		normalizeTimeOnlyValue,
-		"类型转换错误：时间不能为空",
-		"无法解析时间格式: %q",
-		nil,
 	)
 }
 
 func parseTimeHourMinuteString(value string) (time.Time, error) {
 	return parseStringValue(
 		value,
-		timeHourMinuteParseLayouts,
+		CSTLayoutTimeHourMinutes,
 		normalizeTimeHourMinuteValue,
-		"类型转换错误：时间不能为空",
-		"无法解析时间格式: %q",
-		nil,
 	)
 }
 
