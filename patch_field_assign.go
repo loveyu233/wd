@@ -12,7 +12,7 @@ import (
 // target 支持两种传法：
 // 1. 直接传字段对象，例如 query.User.Email，helper 会自动调用 Value/Null
 // 2. 传 Value 方法；这种模式下如果字段可空，仍需要额外传入 setNull
-func AppendPatchUpdate[T comparable](updates []field.AssignExpr, patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) []field.AssignExpr {
+func AppendPatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, bool) {
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
 		if len(setNull) == 0 || setNull[0] == nil {
@@ -26,24 +26,24 @@ func AppendPatchUpdate[T comparable](updates []field.AssignExpr, patch Field[T],
 			panic("可空字段必须提供 setNull")
 		}
 		if !patch.IsSet() {
-			return updates
+			return nil, false
 		}
 		if oldInfo.isNull && patch.Null {
-			return updates
+			return nil, false
 		}
 		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
-			return updates
+			return nil, false
 		}
 		if ok, value := patch.HasValue(); ok {
-			return append(updates, callPatchTargetValue(target, value))
+			return callPatchTargetValue(target, value), true
 		}
-		return append(updates, setNull[0]())
+		return setNull[0](), true
 	}
 
 	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
-		return append(updates, callPatchTargetValue(target, value))
+		return callPatchTargetValue(target, value), true
 	}
-	return updates
+	return nil, false
 }
 
 func callPatchTargetValue[T any](target any, value T) field.AssignExpr {
