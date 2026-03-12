@@ -554,46 +554,56 @@ func (db *GormClient) Gen(opts ...WithGenConfig) {
 		}
 	}
 
-	if len(genConfig.useTablesName) > 0 {
-		var gms []interface{}
-		for _, table := range genConfig.useTablesName {
-			var opts []gen.ModelOpt
-			if genFieldTypes, ok := genConfig.tableColumnType[table]; ok {
-				for _, fieldType := range genFieldTypes {
-					if fieldType.ColumnName == "" {
-						panic("column_name不能为空")
-					}
-					if fieldType.ColumnType != "" {
-						opts = append(opts, gen.FieldType(fieldType.ColumnName, fieldType.ColumnType))
-					}
-					if fieldType.IsJsonStatusType {
-						if len(fieldType.Tags) == 0 {
-							fieldType.Tags = map[string]string{
-								"gorm": fmt.Sprintf("column:%s;serializer:json", fieldType.ColumnName),
-							}
-						} else {
-							if _, ok := fieldType.Tags["gorm"]; !ok {
-								fieldType.Tags["gorm"] = fmt.Sprintf("column:%s;serializer:json", fieldType.ColumnName)
-							}
+	buildTableModelOpts := func(table string) []gen.ModelOpt {
+		opts := append([]gen.ModelOpt(nil), fieldTypes...)
+		if genFieldTypes, ok := genConfig.tableColumnType[table]; ok {
+			for _, fieldType := range genFieldTypes {
+				if fieldType.ColumnName == "" {
+					panic("column_name不能为空")
+				}
+				if fieldType.ColumnType != "" {
+					opts = append(opts, gen.FieldType(fieldType.ColumnName, fieldType.ColumnType))
+				}
+				if fieldType.IsJsonStatusType {
+					if len(fieldType.Tags) == 0 {
+						fieldType.Tags = map[string]string{
+							"gorm": fmt.Sprintf("column:%s;serializer:json", fieldType.ColumnName),
+						}
+					} else {
+						if _, ok := fieldType.Tags["gorm"]; !ok {
+							fieldType.Tags["gorm"] = fmt.Sprintf("column:%s;serializer:json", fieldType.ColumnName)
 						}
 					}
-					if len(fieldType.Tags) > 0 {
-						opts = append(opts, gen.FieldTag(fieldType.ColumnName, func(tag field.Tag) field.Tag {
-							for k, v := range fieldType.Tags {
-								tag.Set(k, v)
-							}
-							return tag
-						}))
-					}
+				}
+				if len(fieldType.Tags) > 0 {
+					opts = append(opts, gen.FieldTag(fieldType.ColumnName, func(tag field.Tag) field.Tag {
+						for k, v := range fieldType.Tags {
+							tag.Set(k, v)
+						}
+						return tag
+					}))
 				}
 			}
-			fieldTypes = append(fieldTypes, opts...)
-			gms = append(gms, g.GenerateModel(table, fieldTypes...))
 		}
-		g.ApplyInterface(func(CustomDeleted) {}, gms...)
-	} else {
-		g.ApplyInterface(func(CustomDeleted) {}, g.GenerateAllTable(fieldTypes...)...)
+		return opts
 	}
+
+	var tables []string
+	if len(genConfig.useTablesName) > 0 {
+		tables = append(tables, genConfig.useTablesName...)
+	} else {
+		tableList, err := db.DB.Migrator().GetTables()
+		if err != nil {
+			panic(fmt.Errorf("get all tables fail: %w", err))
+		}
+		tables = append(tables, tableList...)
+	}
+
+	var gms []interface{}
+	for _, table := range tables {
+		gms = append(gms, g.GenerateModel(table, buildTableModelOpts(table)...))
+	}
+	g.ApplyInterface(func(CustomDeleted) {}, gms...)
 
 	g.Execute()
 }
