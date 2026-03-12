@@ -13,6 +13,7 @@ import (
 type CustomTime interface {
 	Time() time.Time
 	Type() string
+	IsZero() bool
 }
 
 // DateTime 完整的日期时间类型 (YYYY-MM-DD HH:MM:SS)
