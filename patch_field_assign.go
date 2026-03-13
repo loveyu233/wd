@@ -1,18 +1,15 @@
 package wd
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
 	"gorm.io/gen/field"
 )
 
-// AppendPatchUpdate 用来根据 oldValue 自动判断字段是否可为空。
-// oldValue 传模型字段旧值本身即可：非指针表示不可为空，指针表示可为空。
-// target 支持两种传法：
-// 1. 直接传字段对象，例如 query.User.Email，helper 会自动调用 Value/Null
-// 2. 传 Value 方法；这种模式下如果字段可空，仍需要额外传入 setNull
-func AppendPatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, bool) {
+// AppendPatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
+func AppendPatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
 		if len(setNull) == 0 || setNull[0] == nil {
@@ -23,27 +20,27 @@ func AppendPatchUpdate[T comparable](patch Field[T], oldValue any, target any, s
 			}
 		}
 		if len(setNull) == 0 || setNull[0] == nil {
-			panic("可空字段必须提供 setNull")
+			return nil, false, errors.New("可空字段必须提供 setNull")
 		}
 		if !patch.IsSet() {
-			return nil, false
+			return nil, false, nil
 		}
 		if oldInfo.isNull && patch.Null {
-			return nil, false
+			return nil, false, nil
 		}
 		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
-			return nil, false
+			return nil, false, nil
 		}
 		if ok, value := patch.HasValue(); ok {
-			return callPatchTargetValue(target, value), true
+			return callPatchTargetValue(target, value), true, nil
 		}
-		return setNull[0](), true
+		return setNull[0](), true, nil
 	}
 
 	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
-		return callPatchTargetValue(target, value), true
+		return callPatchTargetValue(target, value), true, nil
 	}
-	return nil, false
+	return nil, false, nil
 }
 
 func callPatchTargetValue[T any](target any, value T) field.AssignExpr {
