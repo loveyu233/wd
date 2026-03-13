@@ -9,6 +9,9 @@ import (
 )
 
 func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) field.AssignExpr {
+	if !patch.Set {
+		return nil
+	}
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
 		if len(setNull) == 0 || setNull[0] == nil {
@@ -44,6 +47,9 @@ func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, s
 
 // PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
 func PatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
+	if !patch.Set {
+		return nil, false, nil
+	}
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
 		if len(setNull) == 0 || setNull[0] == nil {

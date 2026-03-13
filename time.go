@@ -128,7 +128,7 @@ func parseStringValue(
 	}
 	parsed, err := time.ParseInLocation(layout, value, ShangHaiTimeLocation)
 	if err != nil {
-		return time.Time{}, errors.New("格式错误")
+		return time.Time{}, errors.New("时间格式错误")
 	}
 	return normalize(parsed), nil
 }
