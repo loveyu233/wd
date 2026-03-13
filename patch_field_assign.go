@@ -8,8 +8,42 @@ import (
 	"gorm.io/gen/field"
 )
 
-// AppendPatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
-func AppendPatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
+func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) field.AssignExpr {
+	oldInfo := parsePatchOldValue[T](oldValue)
+	if oldInfo.nullable {
+		if len(setNull) == 0 || setNull[0] == nil {
+			if hasPatchColumnMethods(target) {
+				setNull = []func() field.AssignExpr{func() field.AssignExpr {
+					return callPatchColumnNull(target)
+				}}
+			}
+		}
+		if len(setNull) == 0 || setNull[0] == nil {
+			return nil
+		}
+		if !patch.IsSet() {
+			return nil
+		}
+		if oldInfo.isNull && patch.Null {
+			return nil
+		}
+		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
+			return nil
+		}
+		if ok, value := patch.HasValue(); ok {
+			return callPatchTargetValue(target, value)
+		}
+		return setNull[0]()
+	}
+
+	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
+		return callPatchTargetValue(target, value)
+	}
+	return nil
+}
+
+// PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
+func PatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
 		if len(setNull) == 0 || setNull[0] == nil {
