@@ -318,10 +318,9 @@ func (l *requestAwareGormLogger) Trace(ctx context.Context, begin time.Time, fc 
 		if err != nil {
 			level = zerolog.ErrorLevel
 			fields["error"] = err.Error()
-			fields["level"] = level.String()
 		}
 		fields["timestamp"] = Now().Format(CSTLayout)
-		rl.AddSQLEntry(fields)
+		rl.AddSQLEntry(level, fields)
 	}
 }
 
