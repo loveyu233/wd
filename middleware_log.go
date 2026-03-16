@@ -495,10 +495,9 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 			"content_kv": contentKV,
 		})
 		for _, m := range tracker.Marks() {
-			WriteGinInfoLog(c, m.key, "运行至[%s]总耗时=%.2fms 上阶段运行到此耗时=%.2fms",
+			WriteGinInfoLog(c, m.key, "阶段[%s]耗时=%.2fms",
 				m.Name,
-				float64(m.SinceStart.Microseconds())/1000,
-				float64(m.SincePrev.Microseconds())/1000)
+				float64(m.Duration.Microseconds())/1000)
 		}
 
 		if c.GetBool(CtxKeyOnlyReq) {
@@ -1284,36 +1283,48 @@ func isRequestBodyRecordingEnabled(c *gin.Context) bool {
 }
 
 type Mark struct {
-	key        string
-	Name       string
-	SinceStart time.Duration
-	SincePrev  time.Duration
+	key      string
+	Name     string
+	Duration time.Duration
 }
 
 type Tracker struct {
 	mu    sync.RWMutex
-	start time.Time
-	last  time.Time
 	marks []Mark
 }
 
-func NewTracker() *Tracker {
-	now := Now()
-	return &Tracker{start: now, last: now}
+type StageTiming struct {
+	tracker *Tracker
+	name    string
+	start   time.Time
+	once    sync.Once
 }
 
-func (t *Tracker) Mark(name string) {
+func NewTracker() *Tracker {
+	return &Tracker{}
+}
+
+func (t *Tracker) Begin(name string) *StageTiming {
+	if t == nil {
+		return &StageTiming{name: name}
+	}
+	return &StageTiming{
+		tracker: t,
+		name:    name,
+		start:   Now(),
+	}
+}
+
+func (t *Tracker) Commit(name string, start time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	now := Now()
 	t.marks = append(t.marks, Mark{
-		key:        CtxKeyLatencyMsInfo,
-		Name:       name,
-		SinceStart: now.Sub(t.start),
-		SincePrev:  now.Sub(t.last),
+		key:      CtxKeyLatencyMsInfo,
+		Name:     name,
+		Duration: now.Sub(start),
 	})
-	t.last = now
 }
 
 func (t *Tracker) Marks() []Mark {
@@ -1323,6 +1334,15 @@ func (t *Tracker) Marks() []Mark {
 	out := make([]Mark, len(t.marks))
 	copy(out, t.marks)
 	return out
+}
+
+func (f *StageTiming) Commit() {
+	if f == nil || f.tracker == nil {
+		return
+	}
+	f.once.Do(func() {
+		f.tracker.Commit(f.name, f.start)
+	})
 }
 
 const trackerKey = "record_time_flag"
@@ -1341,14 +1361,18 @@ func GetContextLogger(c *gin.Context) *ContextLogger {
 	}
 }
 
-// SetRecordTimeFlag 设置一个用于记录耗时的标志，会在后续的日志中输出耗时信息。
-func SetRecordTimeFlag(c *gin.Context, flagName string) {
+// BeginStageTiming 创建一个阶段耗时记录器，调用 Commit 后会把该阶段耗时写入请求日志。
+func BeginStageTiming(c *gin.Context, stageName string) *StageTiming {
+	if c == nil {
+		return &StageTiming{name: stageName}
+	}
 	v, ok := c.Get(trackerKey)
 	if !ok {
-		return
+		return &StageTiming{name: stageName}
 	}
 	tracker, ok := v.(*Tracker)
-	if ok {
-		tracker.Mark(flagName)
+	if !ok {
+		return &StageTiming{name: stageName}
 	}
+	return tracker.Begin(stageName)
 }

@@ -127,6 +127,26 @@ curl http://127.0.0.1:8080/api/profile \
   -H "Authorization: Bearer <TOKEN>"
 ```
 
+### 阶段耗时记录
+如果你想在单个请求内记录某一段业务操作的耗时，可以使用 `BeginStageTiming`：
+
+```go
+rg.POST("/user/:id", func(c *gin.Context) {
+    stage := wd.BeginStageTiming(c, "修改数据库")
+
+    // 执行数据库更新
+    if err := updateUser(c); err != nil {
+        wd.ResponseError(c, err)
+        return
+    }
+
+    stage.Commit()
+    wd.ResponseSuccessMsg(c, "ok")
+})
+```
+
+调用 `Commit()` 后，请求日志中会追加类似 `阶段[修改数据库]耗时=12.34ms` 的记录。
+
 
 
  ## 目录速览
