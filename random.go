@@ -229,3 +229,12 @@ func Random(strLen int64, characterSet ...RandomCharacterSet) string {
 func RandomExcludeErrorPronCharacters(strLen int64) string {
 	return Random(strLen, RandomCharacterExcludeErrorPronCharacters())
 }
+
+// RandomIntRange 用来生成 [left, right] 闭区间的随机整数。
+func RandomIntRange(left, right int) int {
+	if left >= right {
+		panic("左必须小于右")
+	}
+	seededRand := mrand.New(mrand.NewSource(Now().UnixNano()))
+	return seededRand.Intn(right-left+1) + left
+}
