@@ -302,7 +302,6 @@ type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
-	E       string `json:"e,omitempty"`
 }
 
 // ResponseError 根据错误输出统一的 JSON 响应。
@@ -311,9 +310,6 @@ func ResponseError(c *gin.Context, err error) {
 	resp := &Response{
 		Code:    appErr.Code,
 		Message: appErr.Message,
-	}
-	if appErr.E != nil {
-		resp.E = appErr.E.Error()
 	}
 	WriteGinErrAnyLog(c, "response_error", map[string]any{
 		"error":    errorText(err),

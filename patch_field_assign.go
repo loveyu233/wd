@@ -8,9 +8,9 @@ import (
 	"gorm.io/gen/field"
 )
 
-func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) field.AssignExpr {
+func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, error) {
 	if !patch.Set {
-		return nil
+		return nil, nil
 	}
 	oldInfo := parsePatchOldValue[T](oldValue)
 	if oldInfo.nullable {
@@ -22,27 +22,27 @@ func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, s
 			}
 		}
 		if len(setNull) == 0 || setNull[0] == nil {
-			return nil
+			return nil, nil
 		}
 		if !patch.IsSet() {
-			return nil
+			return nil, nil
 		}
 		if oldInfo.isNull && patch.Null {
-			return nil
+			return nil, nil
 		}
 		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
-			return nil
+			return nil, nil
 		}
 		if ok, value := patch.HasValue(); ok {
 			return callPatchTargetValue(target, value)
 		}
-		return setNull[0]()
+		return setNull[0](), nil
 	}
 
 	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
 		return callPatchTargetValue(target, value)
 	}
-	return nil
+	return nil, nil
 }
 
 // PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
@@ -72,40 +72,48 @@ func PatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull
 			return nil, false, nil
 		}
 		if ok, value := patch.HasValue(); ok {
-			return callPatchTargetValue(target, value), true, nil
+			d, err := callPatchTargetValue(target, value)
+			if err != nil {
+				return nil, false, err
+			}
+			return d, true, nil
 		}
 		return setNull[0](), true, nil
 	}
 
 	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
-		return callPatchTargetValue(target, value), true, nil
+		d, err := callPatchTargetValue(target, value)
+		if err != nil {
+			return nil, false, err
+		}
+		return d, true, nil
 	}
 	return nil, false, nil
 }
 
-func callPatchTargetValue[T any](target any, value T) field.AssignExpr {
+func callPatchTargetValue[T any](target any, value T) (field.AssignExpr, error) {
 	if reflect.ValueOf(target).Kind() == reflect.Func {
 		return callPatchSetValue(target, value)
 	}
 	return callPatchColumnValue(target, value)
 }
 
-func callPatchSetValue[T any](setValue any, value T) field.AssignExpr {
+func callPatchSetValue[T any](setValue any, value T) (field.AssignExpr, error) {
 	setter := reflect.ValueOf(setValue)
 	if !setter.IsValid() || setter.Kind() != reflect.Func {
-		panic("setValue 必须是函数")
+		return nil, errors.New("setValue 必须是函数")
 	}
 
 	setterType := setter.Type()
 	if setterType.NumIn() != 1 || setterType.NumOut() != 1 {
-		panic("setValue 必须是单入参单返回值函数")
+		return nil, errors.New("setValue 必须是单入参单返回值函数")
 	}
 
 	arg := reflect.ValueOf(value)
 	paramType := setterType.In(0)
 	if !arg.Type().AssignableTo(paramType) {
 		if !arg.Type().ConvertibleTo(paramType) {
-			panic(fmt.Sprintf("setValue 参数类型不匹配: need=%s got=%s", paramType, arg.Type()))
+			return nil, errors.New(fmt.Sprintf("setValue 参数类型不匹配: need=%s got=%s", paramType, arg.Type()))
 		}
 		arg = arg.Convert(paramType)
 	}
@@ -113,21 +121,21 @@ func callPatchSetValue[T any](setValue any, value T) field.AssignExpr {
 	result := setter.Call([]reflect.Value{arg})
 	assignExpr, ok := result[0].Interface().(field.AssignExpr)
 	if !ok {
-		panic("setValue 返回值必须实现 field.AssignExpr")
+		return nil, errors.New("setValue 返回值必须实现 field.AssignExpr")
 	}
-	return assignExpr
+	return assignExpr, nil
 }
 
-func callPatchColumnValue[T any](column any, value T) field.AssignExpr {
+func callPatchColumnValue[T any](column any, value T) (field.AssignExpr, error) {
 	columnValue := reflect.ValueOf(column)
 	if !columnValue.IsValid() {
-		panic("column 不能为空")
+		return nil, errors.New("column 不能为空")
 	}
 	method := columnValue.MethodByName("Value")
 	if !method.IsValid() {
-		panic("column 必须包含 Value 方法")
+		return nil, errors.New("column 必须包含 Value 方法")
 	}
-	return callPatchMethod(method, value)
+	return callPatchMethod(method, value), nil
 }
 
 func callPatchColumnNull(column any) field.AssignExpr {
