@@ -113,7 +113,7 @@ func callPatchSetValue[T any](setValue any, value T) (field.AssignExpr, error) {
 	paramType := setterType.In(0)
 	if !arg.Type().AssignableTo(paramType) {
 		if !arg.Type().ConvertibleTo(paramType) {
-			return nil, errors.New(fmt.Sprintf("setValue 参数类型不匹配: need=%s got=%s", paramType, arg.Type()))
+			return nil, fmt.Errorf("setValue 参数类型不匹配: need=%s got=%s", paramType, arg.Type())
 		}
 		arg = arg.Convert(paramType)
 	}
