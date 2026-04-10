@@ -38,6 +38,7 @@ type RouterConfig struct {
 	globalMiddleware []gin.HandlerFunc // 全局中间件
 	recordHeaderKeys []string          // 需要记录的请求头
 	saveLog          func(ReqLog)      // 保存请求日志
+	logSnapshotMode  LogSnapshotMode   // 请求日志快照模式
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
 	idleTimeout      time.Duration
@@ -158,6 +159,13 @@ func WithGinRouterLogRecordHeaderKeys(keys []string) GinRouterConfigOption {
 	}
 }
 
+// WithGinRouterLogSnapshotMode 用来指定请求日志对字段和载荷的快照策略。
+func WithGinRouterLogSnapshotMode(mode LogSnapshotMode) GinRouterConfigOption {
+	return func(config *RouterConfig) {
+		config.logSnapshotMode = mode
+	}
+}
+
 // initPrivateRouter 用来组装带公共和私有路由的 gin 引擎。
 func initPrivateRouter(config RouterConfig) *gin.Engine {
 	publicRoutes := make([]func(*gin.RouterGroup), 0, len(PublicRoutes)+1)
@@ -181,9 +189,10 @@ func initPrivateRouter(config RouterConfig) *gin.Engine {
 	config.globalMiddleware = append(config.globalMiddleware, MiddlewareTraceID(), MiddlewareRequestTime(), MiddlewareRecovery())
 	if !config.skipLog {
 		config.globalMiddleware = append(config.globalMiddleware, MiddlewareLogger(MiddlewareLogConfig{
-			HeaderKeys: config.recordHeaderKeys,
-			SaveLog:    config.saveLog,
-			LogWriter:  config.logWriter,
+			HeaderKeys:   config.recordHeaderKeys,
+			SaveLog:      config.saveLog,
+			LogWriter:    config.logWriter,
+			SnapshotMode: config.logSnapshotMode,
 		}))
 	}
 

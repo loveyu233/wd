@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type RequestLogger struct {
 	sqlEntries []SQLLogEntry
 	mu         sync.Mutex
 	logger     zerolog.Logger
+	snapshot   logSnapshotMode
 	durationMs int64
 	statusCode int
 	flushed    bool
@@ -40,12 +42,38 @@ type SQLLogEntry struct {
 	Fields map[string]any
 }
 
+// LogSnapshotMode 用来控制请求日志在写入缓冲区时如何冻结字段和载荷。
+type LogSnapshotMode string
+
+const (
+	// LogSnapshotModeShallow 默认只拷贝 map/slice/array 等容器，兼顾性能与隔离。
+	LogSnapshotModeShallow LogSnapshotMode = "shallow"
+	// LogSnapshotModeDeepJSON 使用 JSON 编解码做深拷贝，隔离最强但性能开销更高。
+	LogSnapshotModeDeepJSON LogSnapshotMode = "deep_json"
+	// LogSnapshotModeNone 不做快照拷贝，性能最好，但后续修改原对象可能污染日志。
+	LogSnapshotModeNone LogSnapshotMode = "none"
+)
+
+type logSnapshotMode string
+
+const (
+	logSnapshotModeShallow  logSnapshotMode = logSnapshotMode(LogSnapshotModeShallow)
+	logSnapshotModeDeepJSON logSnapshotMode = logSnapshotMode(LogSnapshotModeDeepJSON)
+	logSnapshotModeNone     logSnapshotMode = logSnapshotMode(LogSnapshotModeNone)
+)
+
 // NewRequestLogger 用来创建单次请求期间使用的日志缓冲器。
 func NewRequestLogger(logger zerolog.Logger) *RequestLogger {
+	return NewRequestLoggerWithSnapshotMode(logger, LogSnapshotModeShallow)
+}
+
+// NewRequestLoggerWithSnapshotMode 用来创建带指定快照模式的请求日志缓冲器。
+func NewRequestLoggerWithSnapshotMode(logger zerolog.Logger, mode LogSnapshotMode) *RequestLogger {
 	return &RequestLogger{
 		entries:    make([]LogEntry, 0),
 		sqlEntries: make([]SQLLogEntry, 0),
 		logger:     logger,
+		snapshot:   normalizeLogSnapshotMode(mode),
 	}
 }
 
@@ -72,11 +100,8 @@ func (rl *RequestLogger) Entries() []LogEntry {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	entries := make([]LogEntry, 0, len(rl.entries))
-	for _, entry := range rl.entries {
-		entryCopy := cloneLogEntry(entry)
-		entries = append(entries, entryCopy)
-	}
+	entries := make([]LogEntry, len(rl.entries))
+	copy(entries, rl.entries)
 	return entries
 }
 
@@ -101,8 +126,8 @@ func (rl *RequestLogger) addEntry(key string, level zerolog.Level, message strin
 		Level:   level,
 		Key:     key,
 		Message: message,
-		Fields:  snapshotFields(fields),
-		Payload: snapshotValue(payload),
+		Fields:  snapshotFields(fields, rl.snapshot),
+		Payload: snapshotValue(payload, rl.snapshot),
 		Time:    Now().Format(CSTLayout),
 	}
 
@@ -117,7 +142,7 @@ func (rl *RequestLogger) AddSQLEntry(level zerolog.Level, fields map[string]any)
 		return
 	}
 
-	entryFields := snapshotFields(fields)
+	entryFields := snapshotFields(fields, rl.snapshot)
 	entryFields["level"] = level.String()
 	rl.sqlEntries = append(rl.sqlEntries, SQLLogEntry{
 		Level:  level,
@@ -325,8 +350,8 @@ func (e *ContextLogEvent) writeFallback(key, message string, payload any) {
 		Level:   e.level,
 		Key:     key,
 		Message: message,
-		Fields:  snapshotFields(e.fields),
-		Payload: snapshotValue(payload),
+		Fields:  snapshotFields(e.fields, logSnapshotModeShallow),
+		Payload: snapshotValue(payload, logSnapshotModeShallow),
 		Time:    Now().Format(CSTLayout),
 	}
 	e.fallbackLogger.WithLevel(e.level).Any(key, entry).Msg("")
@@ -388,15 +413,17 @@ type ReqLog struct {
 }
 
 type MiddlewareLogConfig struct {
-	HeaderKeys []string
-	SaveLog    func(ReqLog)
-	LogWriter  io.Writer
+	HeaderKeys   []string
+	SaveLog      func(ReqLog)
+	LogWriter    io.Writer
+	SnapshotMode LogSnapshotMode
 }
 
 type middlewareLogRuntimeConfig struct {
-	headerKeys []string
-	saveLog    func(ReqLog)
-	logWriter  io.Writer
+	headerKeys   []string
+	saveLog      func(ReqLog)
+	logWriter    io.Writer
+	snapshotMode logSnapshotMode
 }
 
 // MiddlewareLogger 用来记录请求摘要信息以及业务主动写入的链路日志。
@@ -416,7 +443,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 
 		tracker := NewTracker()
 		c.Set(trackerKey, tracker)
-		requestLogger := NewRequestLogger(baseLogger)
+		requestLogger := NewRequestLoggerWithSnapshotMode(baseLogger, LogSnapshotMode(cfg.snapshotMode))
 		if c.Request != nil {
 			c.Request = c.Request.WithContext(ContextWithRequestLogger(c.Request.Context(), requestLogger))
 		}
@@ -541,9 +568,10 @@ func GinLogSetSkipLogFlag() gin.HandlerFunc {
 
 func buildMiddlewareLogRuntimeConfig(mc MiddlewareLogConfig) middlewareLogRuntimeConfig {
 	cfg := middlewareLogRuntimeConfig{
-		headerKeys: mc.HeaderKeys,
-		saveLog:    mc.SaveLog,
-		logWriter:  mc.LogWriter,
+		headerKeys:   mc.HeaderKeys,
+		saveLog:      mc.SaveLog,
+		logWriter:    mc.LogWriter,
+		snapshotMode: normalizeLogSnapshotMode(mc.SnapshotMode),
 	}
 	if cfg.logWriter == nil {
 		cfg.logWriter = os.Stdout
@@ -716,38 +744,20 @@ func GetContextLogger(c *gin.Context) *ContextLogger {
 	}
 }
 
-func cloneLogEntry(entry LogEntry) LogEntry {
-	return LogEntry{
-		Level:   entry.Level,
-		Key:     entry.Key,
-		Message: entry.Message,
-		Fields:  snapshotFields(entry.Fields),
-		Payload: snapshotValue(entry.Payload),
-		Time:    entry.Time,
-	}
-}
-
-func snapshotFields(fields map[string]any) map[string]any {
+func snapshotFields(fields map[string]any, mode logSnapshotMode) map[string]any {
 	if len(fields) == 0 {
 		return map[string]any{}
 	}
 	cloned := make(map[string]any, len(fields))
 	for key, value := range fields {
-		cloned[key] = snapshotValue(value)
+		cloned[key] = snapshotValue(value, mode)
 	}
 	return cloned
 }
 
-func snapshotValue(value any) any {
+func snapshotValue(value any, mode logSnapshotMode) any {
 	if value == nil {
 		return nil
-	}
-	data, err := json.Marshal(value)
-	if err == nil {
-		var cloned any
-		if err = json.Unmarshal(data, &cloned); err == nil {
-			return cloned
-		}
 	}
 	if errValue, ok := value.(error); ok {
 		return errValue.Error()
@@ -755,7 +765,118 @@ func snapshotValue(value any) any {
 	if stringer, ok := value.(fmt.Stringer); ok {
 		return stringer.String()
 	}
+	switch mode {
+	case logSnapshotModeNone:
+		return value
+	case logSnapshotModeDeepJSON:
+		return snapshotValueDeepJSON(value)
+	default:
+		return snapshotValueShallow(value)
+	}
+}
+
+func snapshotValueDeepJSON(value any) any {
+	data, err := json.Marshal(value)
+	if err == nil {
+		var cloned any
+		if err = json.Unmarshal(data, &cloned); err == nil {
+			return cloned
+		}
+	}
 	return fmt.Sprintf("%+v", value)
+}
+
+// snapshotValueShallow 用来递归拷贝 map/slice/array 容器，避免日志记录后原容器继续被修改。
+func snapshotValueShallow(value any) any {
+	return cloneContainerValue(reflect.ValueOf(value), map[containerVisitKey]reflect.Value{})
+}
+
+type containerVisitKey struct {
+	kind reflect.Kind
+	typ  reflect.Type
+	ptr  uintptr
+}
+
+func cloneContainerValue(value reflect.Value, visited map[containerVisitKey]reflect.Value) any {
+	if !value.IsValid() {
+		return nil
+	}
+
+	switch value.Kind() {
+	case reflect.Map:
+		if value.IsNil() {
+			return reflect.Zero(value.Type()).Interface()
+		}
+		visitKey := containerVisitKey{kind: value.Kind(), typ: value.Type(), ptr: value.Pointer()}
+		if cloned, ok := visited[visitKey]; ok {
+			return cloned.Interface()
+		}
+		cloned := reflect.MakeMapWithSize(value.Type(), value.Len())
+		visited[visitKey] = cloned
+		iter := value.MapRange()
+		for iter.Next() {
+			cloned.SetMapIndex(iter.Key(), cloneContainerTypedValue(iter.Value(), value.Type().Elem(), visited))
+		}
+		return cloned.Interface()
+	case reflect.Slice:
+		if value.IsNil() {
+			return reflect.Zero(value.Type()).Interface()
+		}
+		visitKey := containerVisitKey{kind: value.Kind(), typ: value.Type(), ptr: value.Pointer()}
+		if cloned, ok := visited[visitKey]; ok {
+			return cloned.Interface()
+		}
+		cloned := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		visited[visitKey] = cloned
+		for i := 0; i < value.Len(); i++ {
+			cloned.Index(i).Set(cloneContainerTypedValue(value.Index(i), value.Type().Elem(), visited))
+		}
+		return cloned.Interface()
+	case reflect.Array:
+		cloned := reflect.New(value.Type()).Elem()
+		for i := 0; i < value.Len(); i++ {
+			cloned.Index(i).Set(cloneContainerTypedValue(value.Index(i), value.Type().Elem(), visited))
+		}
+		return cloned.Interface()
+	default:
+		return value.Interface()
+	}
+}
+
+func cloneContainerTypedValue(value reflect.Value, targetType reflect.Type, visited map[containerVisitKey]reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return reflect.Zero(targetType)
+	}
+
+	clonedValue := cloneContainerValue(value, visited)
+	if clonedValue == nil {
+		return reflect.Zero(targetType)
+	}
+
+	clonedReflectValue := reflect.ValueOf(clonedValue)
+	if clonedReflectValue.Type().AssignableTo(targetType) {
+		return clonedReflectValue
+	}
+	if targetType.Kind() == reflect.Interface && clonedReflectValue.Type().Implements(targetType) {
+		return clonedReflectValue
+	}
+	if clonedReflectValue.Type().ConvertibleTo(targetType) {
+		return clonedReflectValue.Convert(targetType)
+	}
+	return value
+}
+
+func normalizeLogSnapshotMode(mode LogSnapshotMode) logSnapshotMode {
+	switch mode {
+	case LogSnapshotModeNone:
+		return logSnapshotModeNone
+	case LogSnapshotModeDeepJSON:
+		return logSnapshotModeDeepJSON
+	case LogSnapshotModeShallow, "":
+		return logSnapshotModeShallow
+	default:
+		return logSnapshotModeShallow
+	}
 }
 
 // BeginStageTiming 创建一个阶段耗时记录器，调用 Commit 后会把该阶段耗时写入请求日志。
