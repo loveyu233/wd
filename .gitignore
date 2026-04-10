@@ -34,3 +34,4 @@ tmp
 test
 
 /.claude/settings.local.json
+*_test.go

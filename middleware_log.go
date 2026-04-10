@@ -1,25 +1,17 @@
 package wd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime"
-	"net/http"
-	"net/textproto"
-	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/tidwall/gjson"
 )
 
 // LogEntry 表示一个日志条目
@@ -28,6 +20,7 @@ type LogEntry struct {
 	Key     string         `json:"-"`
 	Message string         `json:"message"`
 	Fields  map[string]any `json:"fields"`
+	Payload any            `json:"payload,omitempty"`
 	Time    string         `json:"time"`
 }
 
@@ -74,8 +67,30 @@ func (rl *RequestLogger) SetStatusCode(statusCode int) {
 	rl.statusCode = statusCode
 }
 
+// Entries 返回当前已收集日志条目的快照，供持久化等场景复用。
+func (rl *RequestLogger) Entries() []LogEntry {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	entries := make([]LogEntry, 0, len(rl.entries))
+	for _, entry := range rl.entries {
+		entryCopy := cloneLogEntry(entry)
+		entries = append(entries, entryCopy)
+	}
+	return entries
+}
+
 // AddEntry 用来把一条日志事件写入缓冲区。
 func (rl *RequestLogger) AddEntry(key string, level zerolog.Level, message string, fields map[string]any) {
+	rl.addEntry(key, level, message, fields, nil)
+}
+
+// AddEntryAny 用来把携带任意对象载荷的日志事件写入缓冲区。
+func (rl *RequestLogger) AddEntryAny(key string, level zerolog.Level, payload any, fields map[string]any) {
+	rl.addEntry(key, level, "", fields, payload)
+}
+
+func (rl *RequestLogger) addEntry(key string, level zerolog.Level, message string, fields map[string]any, payload any) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	if rl.flushed {
@@ -86,13 +101,9 @@ func (rl *RequestLogger) AddEntry(key string, level zerolog.Level, message strin
 		Level:   level,
 		Key:     key,
 		Message: message,
-		Fields:  make(map[string]any),
+		Fields:  snapshotFields(fields),
+		Payload: snapshotValue(payload),
 		Time:    Now().Format(CSTLayout),
-	}
-
-	// 复制字段避免并发问题
-	for k, v := range fields {
-		entry.Fields[k] = v
 	}
 
 	rl.entries = append(rl.entries, entry)
@@ -106,10 +117,7 @@ func (rl *RequestLogger) AddSQLEntry(level zerolog.Level, fields map[string]any)
 		return
 	}
 
-	entryFields := make(map[string]any, len(fields))
-	for k, v := range fields {
-		entryFields[k] = v
-	}
+	entryFields := snapshotFields(fields)
 	entryFields["level"] = level.String()
 	rl.sqlEntries = append(rl.sqlEntries, SQLLogEntry{
 		Level:  level,
@@ -145,7 +153,7 @@ func (rl *RequestLogger) Flush() {
 	var latencyMsInfoArr []string
 	for _, entry := range entries {
 		switch entry.Key {
-		case CtxKeyRespInfo, CtxKeyReqInfo:
+		case CtxKeyReqInfo:
 			event = event.Any(entry.Key, entry.Fields)
 		case CtxKeyLatencyMsInfo:
 			latencyMsInfoArr = append(latencyMsInfoArr, entry.Message)
@@ -174,50 +182,62 @@ func (rl *RequestLogger) Flush() {
 
 // ContextLogger 提供链路日志记录功能
 type ContextLogger struct {
-	requestLogger *RequestLogger
+	requestLogger  *RequestLogger
+	fallbackLogger zerolog.Logger
+	useFallback    bool
 }
 
 // Info 用来创建记录 Info 级别日志的事件。
 func (cl *ContextLogger) Info() *ContextLogEvent {
 	return &ContextLogEvent{
-		level:         zerolog.InfoLevel,
-		requestLogger: cl.requestLogger,
-		fields:        make(map[string]any),
+		level:          zerolog.InfoLevel,
+		requestLogger:  cl.requestLogger,
+		fallbackLogger: cl.fallbackLogger,
+		useFallback:    cl.useFallback,
+		fields:         make(map[string]any),
 	}
 }
 
 // Error 用来创建记录 Error 级别日志的事件。
 func (cl *ContextLogger) Error() *ContextLogEvent {
 	return &ContextLogEvent{
-		level:         zerolog.ErrorLevel,
-		requestLogger: cl.requestLogger,
-		fields:        make(map[string]any),
+		level:          zerolog.ErrorLevel,
+		requestLogger:  cl.requestLogger,
+		fallbackLogger: cl.fallbackLogger,
+		useFallback:    cl.useFallback,
+		fields:         make(map[string]any),
 	}
 }
 
 // Warn 用来创建记录 Warn 级别日志的事件。
 func (cl *ContextLogger) Warn() *ContextLogEvent {
 	return &ContextLogEvent{
-		level:         zerolog.WarnLevel,
-		requestLogger: cl.requestLogger,
-		fields:        make(map[string]any),
+		level:          zerolog.WarnLevel,
+		requestLogger:  cl.requestLogger,
+		fallbackLogger: cl.fallbackLogger,
+		useFallback:    cl.useFallback,
+		fields:         make(map[string]any),
 	}
 }
 
 // Debug 用来创建记录 Debug 级别日志的事件。
 func (cl *ContextLogger) Debug() *ContextLogEvent {
 	return &ContextLogEvent{
-		level:         zerolog.DebugLevel,
-		requestLogger: cl.requestLogger,
-		fields:        make(map[string]any),
+		level:          zerolog.DebugLevel,
+		requestLogger:  cl.requestLogger,
+		fallbackLogger: cl.fallbackLogger,
+		useFallback:    cl.useFallback,
+		fields:         make(map[string]any),
 	}
 }
 
 // ContextLogEvent 链路日志事件
 type ContextLogEvent struct {
-	level         zerolog.Level
-	requestLogger *RequestLogger
-	fields        map[string]any
+	level          zerolog.Level
+	requestLogger  *RequestLogger
+	fallbackLogger zerolog.Logger
+	useFallback    bool
+	fields         map[string]any
 }
 
 // Str 用来为当前日志事件添加字符串字段。
@@ -266,18 +286,50 @@ func (e *ContextLogEvent) Dur(key string, d time.Duration) *ContextLogEvent {
 
 // Msg 用来将事件写入请求日志缓冲区。
 func (e *ContextLogEvent) Msg(key, msg string) {
-	if e.requestLogger == nil {
+	if e.requestLogger != nil {
+		e.requestLogger.AddEntry(key, e.level, msg, e.fields)
 		return
 	}
-	e.requestLogger.AddEntry(key, e.level, msg, e.fields)
+	if !e.useFallback {
+		return
+	}
+	e.writeFallback(key, msg, nil)
 }
 
 // Msgf 用来以格式化文本写入请求日志。
 func (e *ContextLogEvent) Msgf(key, format string, v ...any) {
-	if e.requestLogger == nil {
+	if e.requestLogger != nil {
+		e.requestLogger.AddEntry(key, e.level, fmt.Sprintf(format, v...), e.fields)
 		return
 	}
-	e.requestLogger.AddEntry(key, e.level, fmt.Sprintf(format, v...), e.fields)
+	if !e.useFallback {
+		return
+	}
+	e.writeFallback(key, fmt.Sprintf(format, v...), nil)
+}
+
+// MsgAny 用来把任意对象作为日志载荷写入请求日志。
+func (e *ContextLogEvent) MsgAny(key string, payload any) {
+	if e.requestLogger != nil {
+		e.requestLogger.AddEntryAny(key, e.level, payload, e.fields)
+		return
+	}
+	if !e.useFallback {
+		return
+	}
+	e.writeFallback(key, "", payload)
+}
+
+func (e *ContextLogEvent) writeFallback(key, message string, payload any) {
+	entry := LogEntry{
+		Level:   e.level,
+		Key:     key,
+		Message: message,
+		Fields:  snapshotFields(e.fields),
+		Payload: snapshotValue(payload),
+		Time:    Now().Format(CSTLayout),
+	}
+	e.fallbackLogger.WithLevel(e.level).Any(key, entry).Msg("")
 }
 
 // 上下文键
@@ -313,42 +365,6 @@ func RequestLoggerFromContext(ctx context.Context) *RequestLogger {
 	return nil
 }
 
-// ResponseWriter 是对 gin.ResponseWriter 的包装，用于捕获写入的响应
-type ResponseWriter struct {
-	gin.ResponseWriter
-	body *responseBodyCapture
-}
-
-// Write 重写 Write 方法以捕获响应内容
-func (w *ResponseWriter) Write(b []byte) (int, error) {
-	if w.body != nil && len(b) > 0 {
-		_, _ = w.body.Write(b)
-	}
-	return w.ResponseWriter.Write(b)
-}
-
-// WriteString 重写 WriteString 方法以捕获响应内容
-func (w *ResponseWriter) WriteString(s string) (int, error) {
-	if w.body != nil && len(s) > 0 {
-		_, _ = w.body.Write([]byte(s))
-	}
-	return w.ResponseWriter.WriteString(s)
-}
-
-// ReadFrom 在 io.Copy 走 ReaderFrom 快路径时仍然进行限额捕获。
-func (w *ResponseWriter) ReadFrom(r io.Reader) (int64, error) {
-	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
-		if w.body == nil || !w.body.Active() {
-			return rf.ReadFrom(r)
-		}
-		return rf.ReadFrom(io.TeeReader(r, w.body))
-	}
-	if w.body == nil || !w.body.Active() {
-		return io.Copy(w.ResponseWriter, r)
-	}
-	return io.Copy(w.ResponseWriter, io.TeeReader(r, w.body))
-}
-
 // init 用来初始化 zerolog 配置并构建默认日志器。
 func init() {
 	//zerolog.TimeFieldFormat = CSTLayout
@@ -359,140 +375,73 @@ func init() {
 }
 
 type ReqLog struct {
-	ReqTime     time.Time         `json:"req_time"`
-	Module      string            `json:"module,omitempty"`
-	Option      string            `json:"option,omitempty"`
-	Method      string            `json:"method,omitempty"`
-	Path        string            `json:"path,omitempty"`
-	URL         string            `json:"url,omitempty"`
-	IP          string            `json:"ip,omitempty"`
-	Content     map[string]any    `json:"content,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	Params      map[string]any    `json:"params,omitempty"`
-	Status      int               `json:"status,omitempty"`
-	LatencyMs   int64             `json:"latency_ms,omitempty"`
-	Body        any               `json:"body,omitempty"`
-	RespStatus  int               `json:"resp_status"`  // 响应数据中的状态码
-	RespMessage string            `json:"resp_message"` // 响应数据中的message
+	ReqTime   time.Time         `json:"req_time"`
+	Module    string            `json:"module,omitempty"`
+	Option    string            `json:"option,omitempty"`
+	Method    string            `json:"method,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	IP        string            `json:"ip,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Status    int               `json:"status,omitempty"`
+	LatencyMs int64             `json:"latency_ms,omitempty"`
+	Logs      []LogEntry        `json:"logs,omitempty"`
 }
 
 type MiddlewareLogConfig struct {
-	HeaderKeys             []string
-	ContentKeys            []string
-	SaveLog                func(ReqLog)
-	LogWriter              io.Writer
-	RecordGETRequests      bool
-	RecordRequestBody      bool
-	RecordResponseBody     bool
-	RequestBodyLimit       int64
-	ResponseBodyLimit      int64
-	BriefResponseBodyLimit int64
+	HeaderKeys []string
+	SaveLog    func(ReqLog)
+	LogWriter  io.Writer
 }
-
-type FileInfo struct {
-	Filename string               `json:"filename"`
-	Size     int64                `json:"size"`
-	Header   textproto.MIMEHeader `json:"header"`
-}
-
-const (
-	defaultRequestBodyLogLimit       int64 = 32 << 10
-	defaultResponseBodyLogLimit      int64 = 32 << 10
-	defaultBriefResponseBodyLogLimit int64 = 8 << 10
-)
 
 type middlewareLogRuntimeConfig struct {
-	headerKeys             []string
-	contentKeys            []string
-	saveLog                func(ReqLog)
-	logWriter              io.Writer
-	recordGETRequests      bool
-	recordRequestBody      bool
-	recordResponseBody     bool
-	requestBodyLimit       int64
-	responseBodyLimit      int64
-	briefResponseBodyLimit int64
+	headerKeys []string
+	saveLog    func(ReqLog)
+	logWriter  io.Writer
 }
 
-// MiddlewareLogger 用来在 gin 中记录请求与响应的详细日志。
+// MiddlewareLogger 用来记录请求摘要信息以及业务主动写入的链路日志。
 func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 	cfg := buildMiddlewareLogRuntimeConfig(mc)
 	baseLogger := zerolog.New(cfg.logWriter).With().
 		Timestamp().
 		Logger()
 	return func(c *gin.Context) {
-		if c.Request != nil && c.Request.Method == http.MethodGet && !cfg.recordGETRequests {
-			c.Next()
-			return
-		}
-		// 开始时间
 		startTime := Now()
-		requestContentType := parseMediaType(c.Request.Header.Get("Content-Type"))
-		c.Set(requestContentTypeKey, requestContentType)
-		c.Set(requestBodyRecordKey, cfg.recordRequestBody)
-
-		requestBodyCapture := attachRequestBodyCapture(c, requestContentType, cfg.recordRequestBody, cfg.requestBodyLimit)
-		if requestBodyCapture != nil {
-			c.Set(requestBodyCaptureKey, requestBodyCapture)
+		method := ""
+		if c.Request != nil {
+			method = c.Request.Method
 		}
-		// 创建自定义 ResponseWriter
-		bodyBuffer := newResponseBodyCapture(cfg.responseBodyLimit, cfg.briefResponseBodyLimit)
-		if cfg.recordResponseBody {
-			bodyBuffer.EnableFull()
-		}
-		responseWriter := &ResponseWriter{
-			ResponseWriter: c.Writer,
-			body:           bodyBuffer,
-		}
-		c.Writer = responseWriter
-		c.Set(responseCaptureKey, bodyBuffer)
+		url := buildRequestURL(c)
+		ip := c.ClientIP()
 
 		tracker := NewTracker()
 		c.Set(trackerKey, tracker)
-		// 创建请求日志器
 		requestLogger := NewRequestLogger(baseLogger)
-		c.Request = c.Request.WithContext(ContextWithRequestLogger(c.Request.Context(), requestLogger))
+		if c.Request != nil {
+			c.Request = c.Request.WithContext(ContextWithRequestLogger(c.Request.Context(), requestLogger))
+		}
 		c.Set(string(RequestLoggerKey), requestLogger)
 
 		c.Next()
 		if c.GetBool(CtxKeySkip) {
 			return
 		}
-		requestLogger.AddEntry(HeaderTraceID, zerolog.InfoLevel, "response", map[string]any{HeaderTraceID: GetTraceID(c)})
-		params := buildRequestParams(c, requestContentType, getRequestBodyCapture(c), isRequestBodyRecordingEnabled(c))
-
-		headerMap := make(map[string]string)
-		for _, item := range cfg.headerKeys {
-			value := c.GetHeader(item)
-			headerMap[item] = value
+		headerMap := buildSelectedHeaders(c, cfg.headerKeys)
+		module := c.GetString(CtxKeyModule)
+		option := c.GetString(CtxKeyOption)
+		traceID := GetTraceID(c)
+		if traceID != "" {
+			requestLogger.AddEntry(HeaderTraceID, zerolog.InfoLevel, "trace_id", map[string]any{
+				HeaderTraceID: traceID,
+			})
 		}
-
-		scheme := "http"
-		if c.Request.TLS != nil {
-			scheme = "https"
-		}
-		fullURL := scheme + "://" + c.Request.Host + c.Request.RequestURI
-
-		var contentKV = make(map[string]any)
-		for _, key := range cfg.contentKeys {
-			value, exists := c.Get(key)
-			if exists {
-				contentKV[key] = value
-			}
-		}
-		// 记录请求开始信息
 		requestLogger.AddEntry(CtxKeyReqInfo, zerolog.InfoLevel, "request", map[string]any{
-			"req_time":   startTime.Format(CSTLayout),
-			"method":     c.Request.Method,
-			"path":       c.Request.URL.Path,
-			"full_url":   fullURL,
-			"req_body":   params,
-			"user_agent": c.Request.UserAgent(),
-			"client_ip":  c.ClientIP(),
-			"header":     headerMap,
-			"module":     c.GetString(CtxKeyModule),
-			"option":     c.GetString(CtxKeyOption),
-			"content_kv": contentKV,
+			"method":  method,
+			"url":     url,
+			"ip":      ip,
+			"module":  module,
+			"option":  option,
+			"headers": headerMap,
 		})
 		for _, m := range tracker.Marks() {
 			WriteGinInfoLog(c, m.key, "阶段[%s]耗时=%.2fms",
@@ -500,44 +449,24 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				float64(m.Duration.Microseconds())/1000)
 		}
 
-		if c.GetBool(CtxKeyOnlyReq) {
-			requestLogger.SetDurationMs(Now().Sub(startTime).Milliseconds())
-			requestLogger.SetStatusCode(c.Writer.Status())
-			// 输出所有收集的日志
-			requestLogger.Flush()
-			return
-		}
-
 		duration := Now().Sub(startTime)
-
-		// 读取响应体（只读取一次）
-		responseBody := buildResponseBodyPayload(c, bodyBuffer, cfg.recordResponseBody)
-		bodyMap := normalizeLogFields(responseBody)
-
-		requestLogger.AddEntry(CtxKeyRespInfo, zerolog.InfoLevel, "response", bodyMap)
+		entrySnapshot := requestLogger.Entries()
 		requestLogger.SetDurationMs(duration.Milliseconds())
 		requestLogger.SetStatusCode(c.Writer.Status())
-
-		// 输出所有收集的日志
 		requestLogger.Flush()
 
 		if cfg.saveLog != nil && !c.GetBool(CtxKeyNoRecord) {
 			cfg.saveLog(ReqLog{
-				ReqTime:     startTime,
-				Module:      c.GetString(CtxKeyModule),
-				Option:      c.GetString(CtxKeyOption),
-				Method:      c.Request.Method,
-				Path:        c.Request.URL.Path,
-				URL:         fullURL,
-				IP:          c.ClientIP(),
-				Content:     contentKV,
-				Headers:     headerMap,
-				Params:      params,
-				Status:      c.Writer.Status(),
-				LatencyMs:   duration.Milliseconds(),
-				Body:        responseBody,
-				RespStatus:  c.GetInt(CtxKeyRespStatus),
-				RespMessage: c.GetString(CtxKeyRespMsg),
+				ReqTime:   startTime,
+				Module:    module,
+				Option:    option,
+				Method:    method,
+				URL:       url,
+				IP:        ip,
+				Headers:   headerMap,
+				Status:    c.Writer.Status(),
+				LatencyMs: duration.Milliseconds(),
+				Logs:      filterPersistLogEntries(entrySnapshot),
 			})
 		}
 	}
@@ -561,6 +490,26 @@ func WriteGinWarnLog(c *gin.Context, key, format string, args ...any) {
 // WriteGinErrLog 用来在当前请求记录 Error 级别日志。
 func WriteGinErrLog(c *gin.Context, key, format string, args ...any) {
 	GetContextLogger(c).Error().Msgf(key, format, args...)
+}
+
+// WriteGinInfoAnyLog 用来在当前请求记录携带任意对象载荷的 Info 级别日志。
+func WriteGinInfoAnyLog(c *gin.Context, key string, payload any) {
+	GetContextLogger(c).Info().MsgAny(key, payload)
+}
+
+// WriteGinDebugAnyLog 用来在当前请求记录携带任意对象载荷的 Debug 级别日志。
+func WriteGinDebugAnyLog(c *gin.Context, key string, payload any) {
+	GetContextLogger(c).Debug().MsgAny(key, payload)
+}
+
+// WriteGinWarnAnyLog 用来在当前请求记录携带任意对象载荷的 Warn 级别日志。
+func WriteGinWarnAnyLog(c *gin.Context, key string, payload any) {
+	GetContextLogger(c).Warn().MsgAny(key, payload)
+}
+
+// WriteGinErrAnyLog 用来在当前请求记录携带任意对象载荷的 Error 级别日志。
+func WriteGinErrAnyLog(c *gin.Context, key string, payload any) {
+	GetContextLogger(c).Error().MsgAny(key, payload)
 }
 
 // GinLogSetModuleName 用来在上下文中标记模块名称。
@@ -590,140 +539,82 @@ func GinLogSetSkipLogFlag() gin.HandlerFunc {
 	}
 }
 
-// GinLogOnlyReqMsg 用来仅记录请求阶段日志。
-func GinLogOnlyReqMsg() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set(CtxKeyOnlyReq, true)
-		c.Next()
-	}
-}
-
-// GinLogBriefInformation 记录gjsonKeys指定的key的值，key的起始是整个响应的根节点，不是单个请求的返回
-// 响应结构如下：如果需要获取data节点下的指定值，使用：data.xxx，具体用法参考：https://github.com/tidwall/gjson
-//
-//	{
-//	  "code": 200,
-//	  "message": "请求成功",
-//	  "data": {
-//	  }
-//	}
-func GinLogBriefInformation(gjsonKeys ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set(CtxKeyBrief, true)
-		c.Set(CtxKeyGjsonKeys, gjsonKeys)
-		enableResponseBriefCapture(c)
-		c.Next()
-	}
-}
-
-// GinLogEnableRequestBody 用来为当前请求动态开启请求体记录。
-func GinLogEnableRequestBody(limit ...int64) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		EnableGinLogRequestBody(c, limit...)
-		c.Next()
-	}
-}
-
-// GinLogEnableResponseBody 用来为当前请求动态开启响应体记录。
-func GinLogEnableResponseBody(limit ...int64) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		EnableGinLogResponseBody(c, limit...)
-		c.Next()
-	}
-}
-
-// GinLogEnableBody 用来同时开启当前请求的请求体和响应体记录。
-func GinLogEnableBody(requestLimit, responseLimit int64) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		EnableGinLogRequestBody(c, requestLimit)
-		EnableGinLogResponseBody(c, responseLimit)
-		c.Next()
-	}
-}
-
-// EnableGinLogRequestBody 用来在当前请求中手动开启请求体记录。
-func EnableGinLogRequestBody(c *gin.Context, limit ...int64) {
-	if c == nil {
-		return
-	}
-	c.Set(requestBodyRecordKey, true)
-	if getRequestBodyCapture(c) != nil {
-		return
-	}
-	contentType, _ := c.Get(requestContentTypeKey)
-	requestContentType, _ := contentType.(string)
-	requestBodyLimit := defaultRequestBodyLogLimit
-	if len(limit) > 0 && limit[0] > 0 {
-		requestBodyLimit = limit[0]
-	}
-	capture := attachRequestBodyCapture(c, requestContentType, true, requestBodyLimit)
-	if capture != nil {
-		c.Set(requestBodyCaptureKey, capture)
-	}
-}
-
-// EnableGinLogResponseBody 用来在当前请求中手动开启响应体记录。
-func EnableGinLogResponseBody(c *gin.Context, limit ...int64) {
-	if c == nil {
-		return
-	}
-	v, ok := c.Get(responseCaptureKey)
-	if !ok {
-		return
-	}
-	capture, ok := v.(*responseBodyCapture)
-	if !ok {
-		return
-	}
-	if len(limit) > 0 && limit[0] > 0 {
-		capture.fullLimit = limit[0]
-	}
-	capture.EnableFull()
-}
-
 func buildMiddlewareLogRuntimeConfig(mc MiddlewareLogConfig) middlewareLogRuntimeConfig {
 	cfg := middlewareLogRuntimeConfig{
-		headerKeys:             mc.HeaderKeys,
-		contentKeys:            mc.ContentKeys,
-		saveLog:                mc.SaveLog,
-		logWriter:              mc.LogWriter,
-		recordGETRequests:      mc.RecordGETRequests,
-		recordRequestBody:      mc.RecordRequestBody,
-		recordResponseBody:     mc.RecordResponseBody,
-		requestBodyLimit:       mc.RequestBodyLimit,
-		responseBodyLimit:      mc.ResponseBodyLimit,
-		briefResponseBodyLimit: mc.BriefResponseBodyLimit,
+		headerKeys: mc.HeaderKeys,
+		saveLog:    mc.SaveLog,
+		logWriter:  mc.LogWriter,
 	}
 	if cfg.logWriter == nil {
 		cfg.logWriter = os.Stdout
 	}
-	if cfg.requestBodyLimit <= 0 {
-		cfg.requestBodyLimit = defaultRequestBodyLogLimit
-	}
-	if cfg.responseBodyLimit <= 0 {
-		cfg.responseBodyLimit = defaultResponseBodyLogLimit
-	}
-	if cfg.briefResponseBodyLimit <= 0 {
-		cfg.briefResponseBodyLimit = defaultBriefResponseBodyLogLimit
-	}
 	return cfg
 }
 
-// recordBodySkip 用来写入未记录请求体的原因。
-func recordBodySkip(params map[string]any, reason string) {
-	if reason == "" {
-		return
+func buildSelectedHeaders(c *gin.Context, keys []string) map[string]string {
+	if c == nil || len(keys) == 0 {
+		return nil
 	}
-	if _, exists := params["body_skipped"]; !exists {
-		params["body_skipped"] = reason
+	headers := make(map[string]string, 0)
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		headers[key] = c.GetHeader(key)
 	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
+}
+
+// buildRequestURL 按优先级拼装请求 URL，避免日志中出现空字符串。
+func buildRequestURL(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	if c.Request.URL == nil {
+		return c.Request.RequestURI
+	}
+	if c.Request.URL.IsAbs() {
+		return c.Request.URL.String()
+	}
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if c.Request.Host != "" {
+		return scheme + "://" + c.Request.Host + c.Request.URL.RequestURI()
+	}
+	if c.Request.URL.RequestURI() != "" {
+		return c.Request.URL.RequestURI()
+	}
+	return c.Request.URL.String()
+}
+
+// filterPersistLogEntries 过滤掉中间件自动注入的基础字段，仅保留主动写入的请求日志条目。
+func filterPersistLogEntries(entries []LogEntry) []LogEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]LogEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Key == CtxKeyReqInfo || entry.Key == HeaderTraceID {
+			continue
+		}
+		out = append(out, entry)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func highestLogLevel(entries []LogEntry, sqlEntries []SQLLogEntry) zerolog.Level {
 	level := zerolog.InfoLevel
 	levelSet := false
 	for _, entry := range entries {
-		if entry.Key == CtxKeyReqInfo || entry.Key == CtxKeyRespInfo || entry.Key == HeaderTraceID {
+		if entry.Key == CtxKeyReqInfo || entry.Key == HeaderTraceID {
 			continue
 		}
 		if !levelSet || entry.Level > level {
@@ -741,545 +632,6 @@ func highestLogLevel(entries []LogEntry, sqlEntries []SQLLogEntry) zerolog.Level
 		return zerolog.InfoLevel
 	}
 	return level
-}
-
-type limitedBuffer struct {
-	limit     int64
-	truncated bool
-	buf       bytes.Buffer
-}
-
-func newLimitedBuffer(limit int64) *limitedBuffer {
-	if limit < 0 {
-		limit = 0
-	}
-	return &limitedBuffer{limit: limit}
-}
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if b == nil || len(p) == 0 {
-		return len(p), nil
-	}
-	remaining := b.limit - int64(b.buf.Len())
-	if remaining <= 0 {
-		b.truncated = true
-		return len(p), nil
-	}
-	if int64(len(p)) > remaining {
-		_, _ = b.buf.Write(p[:remaining])
-		b.truncated = true
-		return len(p), nil
-	}
-	_, _ = b.buf.Write(p)
-	return len(p), nil
-}
-
-func (b *limitedBuffer) Bytes() []byte {
-	if b == nil {
-		return nil
-	}
-	return b.buf.Bytes()
-}
-
-func (b *limitedBuffer) Len() int {
-	if b == nil {
-		return 0
-	}
-	return b.buf.Len()
-}
-
-func (b *limitedBuffer) Limit() int64 {
-	if b == nil {
-		return 0
-	}
-	return b.limit
-}
-
-func (b *limitedBuffer) Truncated() bool {
-	if b == nil {
-		return false
-	}
-	return b.truncated
-}
-
-type responseCaptureMode uint8
-
-const (
-	responseCaptureDisabled responseCaptureMode = iota
-	responseCaptureBrief
-	responseCaptureFull
-)
-
-type responseBodyCapture struct {
-	mode       responseCaptureMode
-	fullLimit  int64
-	briefLimit int64
-	buf        *limitedBuffer
-}
-
-func newResponseBodyCapture(fullLimit, briefLimit int64) *responseBodyCapture {
-	return &responseBodyCapture{
-		mode:       responseCaptureDisabled,
-		fullLimit:  fullLimit,
-		briefLimit: briefLimit,
-	}
-}
-
-func (c *responseBodyCapture) EnableFull() {
-	if c == nil {
-		return
-	}
-	if c.mode == responseCaptureFull {
-		return
-	}
-	if c.mode == responseCaptureBrief && c.buf != nil {
-		prevBytes := append([]byte(nil), c.buf.Bytes()...)
-		upgraded := newLimitedBuffer(c.fullLimit)
-		_, _ = upgraded.Write(prevBytes)
-		if c.buf.Truncated() {
-			upgraded.truncated = true
-		}
-		c.buf = upgraded
-	}
-	c.mode = responseCaptureFull
-	if c.buf == nil {
-		c.buf = newLimitedBuffer(c.fullLimit)
-	}
-}
-
-func (c *responseBodyCapture) EnableBrief() {
-	if c == nil || c.mode == responseCaptureFull || c.mode == responseCaptureBrief {
-		return
-	}
-	c.mode = responseCaptureBrief
-	c.buf = newLimitedBuffer(c.briefLimit)
-}
-
-func (c *responseBodyCapture) Active() bool {
-	return c != nil && c.mode != responseCaptureDisabled
-}
-
-func (c *responseBodyCapture) Write(p []byte) (int, error) {
-	if !c.Active() || len(p) == 0 {
-		return len(p), nil
-	}
-	return c.buf.Write(p)
-}
-
-func (c *responseBodyCapture) Bytes() []byte {
-	if c == nil || c.buf == nil {
-		return nil
-	}
-	return c.buf.Bytes()
-}
-
-func (c *responseBodyCapture) Len() int {
-	if c == nil || c.buf == nil {
-		return 0
-	}
-	return c.buf.Len()
-}
-
-func (c *responseBodyCapture) Limit() int64 {
-	if c == nil {
-		return 0
-	}
-	if c.mode == responseCaptureBrief {
-		return c.briefLimit
-	}
-	return c.fullLimit
-}
-
-func (c *responseBodyCapture) Truncated() bool {
-	if c == nil || c.buf == nil {
-		return false
-	}
-	return c.buf.Truncated()
-}
-
-type requestBodyCaptureReadCloser struct {
-	io.ReadCloser
-	capture *limitedBuffer
-}
-
-func (r *requestBodyCaptureReadCloser) Read(p []byte) (int, error) {
-	n, err := r.ReadCloser.Read(p)
-	if n > 0 && r.capture != nil {
-		_, _ = r.capture.Write(p[:n])
-	}
-	return n, err
-}
-
-func attachRequestBodyCapture(c *gin.Context, contentType string, enabled bool, limit int64) *limitedBuffer {
-	if c.Request == nil || c.Request.Body == nil || c.Request.Body == http.NoBody {
-		return nil
-	}
-	if !enabled {
-		return nil
-	}
-	if !shouldCaptureRequestBody(contentType) {
-		return nil
-	}
-	capture := newLimitedBuffer(limit)
-	c.Request.Body = &requestBodyCaptureReadCloser{
-		ReadCloser: c.Request.Body,
-		capture:    capture,
-	}
-	return capture
-}
-
-func buildRequestParams(c *gin.Context, contentType string, bodyCapture *limitedBuffer, recordRequestBody bool) map[string]any {
-	params := make(map[string]any)
-	queryParams := make(map[string]any)
-	for k, v := range c.Request.URL.Query() {
-		if len(v) == 1 {
-			queryParams[k] = v[0]
-		} else {
-			queryParams[k] = v
-		}
-	}
-	if len(queryParams) > 0 {
-		params["query"] = queryParams
-	}
-
-	pathParams := make(map[string]any)
-	for _, param := range c.Params {
-		pathParams[param.Key] = param.Value
-	}
-	if len(pathParams) > 0 {
-		params["path"] = pathParams
-	}
-	if !recordRequestBody {
-		if requestHasBody(c.Request, contentType) {
-			recordBodySkip(params, "未开启请求体记录")
-		}
-		return params
-	}
-
-	switch contentType {
-	case "multipart/form-data":
-		appendMultipartRequestParams(c, params)
-	case "application/x-www-form-urlencoded":
-		appendFormRequestParams(c, params, bodyCapture)
-	default:
-		appendStructuredRequestBody(params, contentType, bodyCapture, c.Request.ContentLength)
-	}
-	return params
-}
-
-func appendMultipartRequestParams(c *gin.Context, params map[string]any) {
-	form := c.Request.MultipartForm
-	if form == nil {
-		recordBodySkip(params, "multipart 请求体未被下游解析，已跳过记录")
-		return
-	}
-	if len(form.Value) > 0 {
-		params["form"] = valuesToMap(form.Value)
-	}
-	if len(form.File) == 0 {
-		return
-	}
-	fileParams := make(map[string][]FileInfo, len(form.File))
-	for key, files := range form.File {
-		fileInfos := make([]FileInfo, 0, len(files))
-		for _, file := range files {
-			fileInfos = append(fileInfos, FileInfo{
-				Filename: file.Filename,
-				Size:     file.Size,
-				Header:   file.Header,
-			})
-		}
-		fileParams[key] = fileInfos
-	}
-	params["files"] = fileParams
-}
-
-func appendFormRequestParams(c *gin.Context, params map[string]any, bodyCapture *limitedBuffer) {
-	if len(c.Request.PostForm) > 0 {
-		params["form"] = valuesToMap(c.Request.PostForm)
-		return
-	}
-	if bodyCapture == nil || bodyCapture.Len() == 0 {
-		if c.Request.ContentLength > 0 {
-			recordBodySkip(params, "表单请求体未被下游读取，已跳过记录")
-		}
-		return
-	}
-	if bodyCapture.Truncated() {
-		recordBodySkip(params, fmt.Sprintf("表单请求体超过 %d 字节，已跳过记录", bodyCapture.Limit()))
-		return
-	}
-	values, err := url.ParseQuery(string(bodyCapture.Bytes()))
-	if err != nil {
-		recordBodySkip(params, fmt.Sprintf("解析表单请求体失败: %v", err))
-		return
-	}
-	params["form"] = valuesToMap(values)
-}
-
-func appendStructuredRequestBody(params map[string]any, contentType string, bodyCapture *limitedBuffer, contentLength int64) {
-	if bodyCapture == nil || bodyCapture.Len() == 0 {
-		if contentLength > 0 {
-			if contentType != "" && !shouldCaptureRequestBody(contentType) {
-				recordBodySkip(params, fmt.Sprintf("请求 Content-Type=%s，已跳过记录", emptyContentType(contentType)))
-				return
-			}
-			recordBodySkip(params, "请求体未被下游读取，已跳过记录")
-		}
-		return
-	}
-	if bodyCapture.Truncated() {
-		recordBodySkip(params, fmt.Sprintf("请求体超过 %d 字节，已跳过记录", bodyCapture.Limit()))
-		return
-	}
-	bodyBytes := bodyCapture.Bytes()
-	switch {
-	case isJSONMediaType(contentType):
-		var bodyParams any
-		if err := json.Unmarshal(bodyBytes, &bodyParams); err == nil {
-			params["json"] = bodyParams
-		} else {
-			params["json_raw"] = string(bodyBytes)
-		}
-	case isXMLMediaType(contentType):
-		params["xml"] = string(bodyBytes)
-	case contentType == "" && json.Valid(bodyBytes):
-		var bodyParams any
-		if err := json.Unmarshal(bodyBytes, &bodyParams); err == nil {
-			params["json"] = bodyParams
-		} else {
-			params["json_raw"] = string(bodyBytes)
-		}
-	case contentType == "" && utf8.Valid(bodyBytes):
-		params["raw"] = map[string]any{
-			"content_type": contentType,
-			"body":         string(bodyBytes),
-			"size":         len(bodyBytes),
-		}
-	case isTextMediaType(contentType):
-		params["raw"] = map[string]any{
-			"content_type": contentType,
-			"body":         string(bodyBytes),
-			"size":         len(bodyBytes),
-		}
-	case len(bodyBytes) > 0:
-		recordBodySkip(params, fmt.Sprintf("请求 Content-Type=%s，已跳过记录", emptyContentType(contentType)))
-	}
-}
-
-func buildResponseBodyPayload(c *gin.Context, bodyCapture *responseBodyCapture, recordResponseBody bool) any {
-	body, reason := parseResponseBody(c, bodyCapture, recordResponseBody)
-	if reason == "" {
-		return body
-	}
-	if body == nil {
-		return map[string]any{"body_skipped": reason}
-	}
-	if bodyMap, ok := body.(map[string]any); ok {
-		fields := make(map[string]any, len(bodyMap)+1)
-		for k, v := range bodyMap {
-			fields[k] = v
-		}
-		fields["body_skipped"] = reason
-		return fields
-	}
-	return map[string]any{
-		"body":         body,
-		"body_skipped": reason,
-	}
-}
-
-func parseResponseBody(c *gin.Context, bodyCapture *responseBodyCapture, recordResponseBody bool) (any, string) {
-	if bodyCapture == nil || !bodyCapture.Active() {
-		if c.GetBool(CtxKeyBrief) {
-			return nil, "brief 响应捕获未启用"
-		}
-		if !recordResponseBody {
-			return nil, "未开启响应体记录"
-		}
-		if c.Writer.Size() > 0 {
-			return nil, "响应体未被记录"
-		}
-		return nil, ""
-	}
-	if bodyCapture.Len() == 0 {
-		if c.Writer.Size() > 0 {
-			return nil, "响应体未被记录"
-		}
-		return nil, ""
-	}
-	if bodyCapture.Truncated() {
-		return nil, fmt.Sprintf("响应体超过 %d 字节，已跳过记录", bodyCapture.Limit())
-	}
-	if isAttachmentResponse(c.Writer.Header()) {
-		return nil, "附件响应已跳过记录"
-	}
-	bodyBytes := bodyCapture.Bytes()
-	contentType := parseMediaType(c.Writer.Header().Get("Content-Type"))
-	if contentType == "" && json.Valid(bodyBytes) {
-		contentType = MimeJSON
-	}
-	if c.GetBool(CtxKeyBrief) {
-		if !isJSONMediaType(contentType) {
-			return nil, fmt.Sprintf("响应 Content-Type=%s，不支持摘要提取", emptyContentType(contentType))
-		}
-		bodyMap := make(map[string]any)
-		for _, ele := range c.GetStringSlice(CtxKeyGjsonKeys) {
-			bodyMap[ele] = gjson.GetBytes(bodyBytes, ele).Value()
-		}
-		return bodyMap, ""
-	}
-	switch {
-	case isJSONMediaType(contentType):
-		var body any
-		if err := json.Unmarshal(bodyBytes, &body); err != nil {
-			return nil, fmt.Sprintf("解析响应体失败: %v", err)
-		}
-		return body, ""
-	case isXMLMediaType(contentType), strings.HasPrefix(contentType, "text/"):
-		return string(bodyBytes), ""
-	case contentType == "" && utf8.Valid(bodyBytes):
-		return string(bodyBytes), ""
-	default:
-		return nil, fmt.Sprintf("响应 Content-Type=%s，已跳过记录", emptyContentType(contentType))
-	}
-}
-
-func normalizeLogFields(payload any) map[string]any {
-	switch v := payload.(type) {
-	case nil:
-		return map[string]any{}
-	case map[string]any:
-		fields := make(map[string]any, len(v))
-		for key, value := range v {
-			fields[key] = value
-		}
-		return fields
-	default:
-		return map[string]any{"body": v}
-	}
-}
-
-func valuesToMap(values map[string][]string) map[string]any {
-	out := make(map[string]any, len(values))
-	for key, value := range values {
-		if len(value) == 1 {
-			out[key] = value[0]
-		} else {
-			out[key] = value
-		}
-	}
-	return out
-}
-
-func parseMediaType(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	mediaType, _, err := mime.ParseMediaType(value)
-	if err != nil {
-		return strings.ToLower(value)
-	}
-	return strings.ToLower(mediaType)
-}
-
-func shouldCaptureRequestBody(contentType string) bool {
-	if contentType == "multipart/form-data" {
-		return false
-	}
-	return contentType == "" || isTextMediaType(contentType)
-}
-
-func isJSONMediaType(contentType string) bool {
-	return contentType == MimeJSON || strings.HasSuffix(contentType, "+json")
-}
-
-func isXMLMediaType(contentType string) bool {
-	return contentType == "application/xml" || contentType == "text/xml" || strings.HasSuffix(contentType, "+xml")
-}
-
-func isTextMediaType(contentType string) bool {
-	switch {
-	case contentType == "application/x-www-form-urlencoded":
-		return true
-	case isJSONMediaType(contentType):
-		return true
-	case isXMLMediaType(contentType):
-		return true
-	case strings.HasPrefix(contentType, "text/"):
-		return true
-	default:
-		return false
-	}
-}
-
-func isAttachmentResponse(header http.Header) bool {
-	contentDisposition := strings.ToLower(header.Get("Content-Disposition"))
-	return strings.Contains(contentDisposition, "attachment")
-}
-
-func emptyContentType(contentType string) string {
-	if contentType == "" {
-		return "unknown"
-	}
-	return contentType
-}
-
-const (
-	responseCaptureKey    = "middleware_log_response_capture"
-	requestBodyCaptureKey = "middleware_log_request_capture"
-	requestContentTypeKey = "middleware_log_request_content_type"
-	requestBodyRecordKey  = "middleware_log_request_record_enabled"
-)
-
-func enableResponseBriefCapture(c *gin.Context) {
-	v, ok := c.Get(responseCaptureKey)
-	if !ok {
-		return
-	}
-	capture, ok := v.(*responseBodyCapture)
-	if !ok {
-		return
-	}
-	capture.EnableBrief()
-}
-
-func requestHasBody(req *http.Request, contentType string) bool {
-	if req == nil || req.Body == nil || req.Body == http.NoBody {
-		return false
-	}
-	if req.ContentLength > 0 {
-		return true
-	}
-	return req.ContentLength == -1 && contentType != ""
-}
-
-func getRequestBodyCapture(c *gin.Context) *limitedBuffer {
-	if c == nil {
-		return nil
-	}
-	v, ok := c.Get(requestBodyCaptureKey)
-	if !ok {
-		return nil
-	}
-	capture, ok := v.(*limitedBuffer)
-	if !ok {
-		return nil
-	}
-	return capture
-}
-
-func isRequestBodyRecordingEnabled(c *gin.Context) bool {
-	if c == nil {
-		return false
-	}
-	enabled, ok := c.Get(requestBodyRecordKey)
-	if !ok {
-		return false
-	}
-	flag, ok := enabled.(bool)
-	return ok && flag
 }
 
 type Mark struct {
@@ -1349,16 +701,61 @@ const trackerKey = "record_time_flag"
 
 // GetContextLogger 用来从 gin.Context 获取请求级日志器。
 func GetContextLogger(c *gin.Context) *ContextLogger {
-	if requestLogger, exists := c.Get(string(RequestLoggerKey)); exists {
-		if rl, ok := requestLogger.(*RequestLogger); ok {
-			return &ContextLogger{requestLogger: rl}
+	if c != nil {
+		if requestLogger, exists := c.Get(string(RequestLoggerKey)); exists {
+			if rl, ok := requestLogger.(*RequestLogger); ok {
+				return &ContextLogger{requestLogger: rl}
+			}
 		}
 	}
 
-	// 如果获取失败，返回一个空的日志器避免 panic
+	// 如果当前不在请求日志链路中，则退化为立即输出，避免日志被静默吞掉。
 	return &ContextLogger{
-		requestLogger: NewRequestLogger(log.Logger),
+		fallbackLogger: log.Logger,
+		useFallback:    true,
 	}
+}
+
+func cloneLogEntry(entry LogEntry) LogEntry {
+	return LogEntry{
+		Level:   entry.Level,
+		Key:     entry.Key,
+		Message: entry.Message,
+		Fields:  snapshotFields(entry.Fields),
+		Payload: snapshotValue(entry.Payload),
+		Time:    entry.Time,
+	}
+}
+
+func snapshotFields(fields map[string]any) map[string]any {
+	if len(fields) == 0 {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(fields))
+	for key, value := range fields {
+		cloned[key] = snapshotValue(value)
+	}
+	return cloned
+}
+
+func snapshotValue(value any) any {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err == nil {
+		var cloned any
+		if err = json.Unmarshal(data, &cloned); err == nil {
+			return cloned
+		}
+	}
+	if errValue, ok := value.(error); ok {
+		return errValue.Error()
+	}
+	if stringer, ok := value.(fmt.Stringer); ok {
+		return stringer.String()
+	}
+	return fmt.Sprintf("%+v", value)
 }
 
 // BeginStageTiming 创建一个阶段耗时记录器，调用 Commit 后会把该阶段耗时写入请求日志。

@@ -6,7 +6,7 @@
 - **一体化 HTTP 启动器**（`http.go` + `gin_engine.go`）提供公共/私有路由注册、全局/认证中间件注入、健康检查、优雅关闭及运行参数（超时、前缀、日志等）的统一配置接口。
 - **JWT 认证链路**（`auth_jwt.go`）具备登录/退出/刷新处理器、灵活的 Token 提取策略、Cookie 同步、可插拔 payload/授权钩子，并可自动接入 HTTP 启动器的私有路由。
 - **数据访问与缓存**：`gorm.go` 暴露 `InitGormDB`、`GormDefaultLogger`，`redis.go` 封装 `redis.UniversalClient`、分布式锁（redsync）及多种配置项，便于以一致方式管理数据库和 Redis。
-- **可观测中间件**：`middleware_trace_id.go`、`middleware_request_time.go`、`middleware_log.go` 等提供链路日志、TraceID、请求耗时、异常恢复等通用能力。
+- **可观测中间件**：`middleware_trace_id.go`、`middleware_request_time.go`、`middleware_log.go` 等提供链路日志、TraceID、请求耗时、异常恢复等通用能力；其中请求日志默认只保留请求摘要和业务主动写入的日志条目。
 - **网络与工具集**：`resty.go` 提供默认 HTTP 客户端，`response.go`/`request.go` 统一请求/响应结构，`password.go`、`encrypt.go`、`random.go`、`snowflake.go` 等实现密码、加解密、随机 ID、ID 生成器。
 - **场景扩展**：`pay/`、`login/`、`msg/`、`excel_*` 等子目录覆盖支付、登录、消息、Excel 处理等业务常见需求，可按需引用。
 
@@ -147,6 +147,30 @@ rg.POST("/user/:id", func(c *gin.Context) {
 
 调用 `Commit()` 后，请求日志中会追加类似 `阶段[修改数据库]耗时=12.34ms` 的记录。
 
+### 请求日志说明
+当前 `MiddlewareLogger` 的行为已经简化，请求日志默认只包含以下基础信息：
+
+- `method`
+- `url`
+- `ip`
+- `module`
+- `option`
+
+如果你希望在单个请求内追加业务日志，请在处理流程中主动调用：
+
+- `WriteGinInfoLog`
+- `WriteGinDebugLog`
+- `WriteGinWarnLog`
+- `WriteGinErrLog`
+- `WriteGinInfoAnyLog`
+- `WriteGinDebugAnyLog`
+- `WriteGinWarnAnyLog`
+- `WriteGinErrAnyLog`
+
+其中 `WriteGin*AnyLog` 适合直接记录结构体、切片、map 等任意对象，例如把本次请求的响应结构体直接写入请求日志。
+
+如果你配置了 `WithGinRouterLogSaveLog`，持久化回调收到的 `ReqLog` 也只会保留上述基础请求摘要，以及业务主动写入的 `Logs`。中间件不再主动解析请求体、响应体，也不再区分 GET 请求或精简日志模式。
+
 
 
  ## 目录速览
@@ -157,7 +181,7 @@ rg.POST("/user/:id", func(c *gin.Context) {
       ├── http.go                # HTTP Server 启动器、优雅关闭、默认认证中间件挂载
       ├── middleware_trace_id.go # TraceID 注入
       ├── middleware_request_time.go # 请求耗时统计
-      ├── middleware_log.go      # 链路日志与请求日志收集
+      ├── middleware_log.go      # 链路日志与请求摘要记录
       ├── middleware_recovery.go # panic 保护
       ├── middleware_cors.go     # CORS 配置中间件
       ├── gorm.go                # GORM 初始化、默认 Logger、全局 DB 实例

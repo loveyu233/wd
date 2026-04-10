@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-sql-driver/mysql"
-	"github.com/spf13/cast"
 	"gorm.io/gorm"
 )
 
@@ -309,8 +308,6 @@ type Response struct {
 // ResponseError 根据错误输出统一的 JSON 响应。
 func ResponseError(c *gin.Context, err error) {
 	appErr := ConvertToAppError(err)
-	c.Set(CtxKeyRespStatus, appErr.Code)
-	c.Set(CtxKeyRespMsg, appErr.Message)
 	resp := &Response{
 		Code:    appErr.Code,
 		Message: appErr.Message,
@@ -318,36 +315,36 @@ func ResponseError(c *gin.Context, err error) {
 	if appErr.E != nil {
 		resp.E = appErr.E.Error()
 	}
+	WriteGinErrAnyLog(c, "response_error", map[string]any{
+		"error":    errorText(err),
+		"response": resp,
+	})
 	c.JSON(http.StatusOK, resp)
 }
 
 // ResponseParamError 输出校验失败时的 JSON 响应。
 func ResponseParamError(c *gin.Context, err error) {
 	te := TranslateError(err).Error()
-	c.Set(CtxKeyRespStatus, errInvalidParam.Code)
-	c.Set(CtxKeyRespMsg, te)
 	if te == "" {
 		te = errInvalidParam.Message
 	}
-	c.JSON(http.StatusOK, &Response{
+	resp := &Response{
 		Code:    errInvalidParam.Code,
 		Message: te,
+	}
+	WriteGinErrAnyLog(c, "response_param_error", map[string]any{
+		"error":    errorText(err),
+		"response": resp,
 	})
+	c.JSON(http.StatusOK, resp)
 }
 
-// ResponseSuccess 返回包含数据的成功响应。如果是非对象时，将数据转为字符串在message中返回
+// ResponseSuccess 返回包含数据的成功响应。
 func ResponseSuccess(c *gin.Context, data any, msg ...string) {
 	var message = "操作成功"
 	if len(msg) > 0 {
 		message = msg[0]
 	}
-	switch data.(type) {
-	case string, int, int8, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
-		ResponseSuccessMsg(c, cast.ToString(data))
-		return
-	}
-	c.Set(CtxKeyRespStatus, http.StatusOK)
-	c.Set(CtxKeyRespMsg, message)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
 		Message: message,
@@ -357,8 +354,6 @@ func ResponseSuccess(c *gin.Context, data any, msg ...string) {
 
 // ResponseSuccessMsg 只返回成功的msg没有data
 func ResponseSuccessMsg(c *gin.Context, msg string) {
-	c.Set(CtxKeyRespStatus, http.StatusOK)
-	c.Set(CtxKeyRespMsg, msg)
 	c.JSON(http.StatusOK, &Response{
 		Code:    http.StatusOK,
 		Message: msg,
@@ -374,8 +369,6 @@ func ResponseSuccessToken(c *gin.Context, token string) {
 
 // ResponseSuccessEncryptData 对响应数据进行加密后返回。
 func ResponseSuccessEncryptData(c *gin.Context, data any, custom func(now int64) (key, nonce string)) {
-	c.Set(CtxKeyRespStatus, http.StatusOK)
-	c.Set(CtxKeyRespMsg, "请求成功")
 	response, err := EncryptData(data, custom)
 	if err != nil {
 		c.JSON(http.StatusOK, &Response{
@@ -404,4 +397,11 @@ func ReturnAppErr(fn func() error) error {
 		return ConvertToAppError(err)
 	}
 	return nil
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

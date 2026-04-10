@@ -3,12 +3,9 @@ package wd
 const (
 	CtxKeyModule        = "module"
 	CtxKeyOption        = "option"
-	CtxKeyGjsonKeys     = "gjsonkeys"
 	CtxKeyRespMsg       = "resp-msg"
 	CtxKeyRespStatus    = "resp-status"
 	CtxKeySkip          = "skip"
-	CtxKeyOnlyReq       = "only-req"
-	CtxKeyBrief         = "brief"
 	CtxKeyNoRecord      = "no_record"
 	CtxKeyRequestTime   = "request_time"
 	HeaderOrigin        = "Origin"
@@ -18,10 +15,8 @@ const (
 	HeaderTraceID       = "Trace-ID"
 	CtxKeyJWTPayload    = "JWT_PAYLOAD"
 	CtxKeyJWTToken      = "JWT_TOKEN"
-	MimeJSON            = "application/json"
 	CtxKeyLatencyMsInfo = "latency_ms_info"
 	CtxKeyDurationMs    = "duration_ms"
 	CtxKeyStatusCode    = "status_code"
-	CtxKeyRespInfo      = "resp_info"
 	CtxKeyReqInfo       = "req_info"
 )

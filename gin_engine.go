@@ -31,27 +31,20 @@ func (pr *PrivateRoutesType) Append(f func(*gin.RouterGroup)) {
 }
 
 type RouterConfig struct {
-	outputHealthz          bool              // 是否输出健康检查请求的日志输出
-	model                  GinModel          // gin启动模式
-	prefix                 string            // api前缀
-	authMiddleware         []gin.HandlerFunc // 认证api的中间件
-	globalMiddleware       []gin.HandlerFunc // 全局中间件
-	recordHeaderKeys       []string          // 需要记录的请求头
-	saveLog                func(ReqLog)      // 保存请求日志
-	readTimeout            time.Duration
-	writeTimeout           time.Duration
-	idleTimeout            time.Duration
-	maxHeaderBytes         int
-	skipLog                bool
-	logWriter              io.Writer
-	contentKeys            []string
-	recordGETRequests      bool
-	recordRequestBody      bool
-	recordResponseBody     bool
-	requestBodyLimit       int64
-	responseBodyLimit      int64
-	briefResponseBodyLimit int64
-	engineFunc             func(engine *gin.Engine)
+	outputHealthz    bool              // 是否输出健康检查请求的日志输出
+	model            GinModel          // gin启动模式
+	prefix           string            // api前缀
+	authMiddleware   []gin.HandlerFunc // 认证api的中间件
+	globalMiddleware []gin.HandlerFunc // 全局中间件
+	recordHeaderKeys []string          // 需要记录的请求头
+	saveLog          func(ReqLog)      // 保存请求日志
+	readTimeout      time.Duration
+	writeTimeout     time.Duration
+	idleTimeout      time.Duration
+	maxHeaderBytes   int
+	skipLog          bool
+	logWriter        io.Writer
+	engineFunc       func(engine *gin.Engine)
 }
 
 type GinModel string
@@ -85,11 +78,6 @@ func WithGinEngineFunc(fun func(engine *gin.Engine)) GinRouterConfigOption {
 func WithLogWriter(w io.Writer) GinRouterConfigOption {
 	return func(config *RouterConfig) {
 		config.logWriter = w
-	}
-}
-func WithLogContentKeys(keys []string) GinRouterConfigOption {
-	return func(config *RouterConfig) {
-		config.contentKeys = keys
 	}
 }
 
@@ -156,13 +144,6 @@ func WithGinRouterGlobalMiddleware(handlers ...gin.HandlerFunc) GinRouterConfigO
 	}
 }
 
-// WithGinRouterLogRecordHeaderKeys 用来指定需要记录的请求头。
-func WithGinRouterLogRecordHeaderKeys(keys []string) GinRouterConfigOption {
-	return func(config *RouterConfig) {
-		config.recordHeaderKeys = keys
-	}
-}
-
 // WithGinRouterLogSaveLog 用来注入持久化请求日志的回调。
 func WithGinRouterLogSaveLog(f func(ReqLog)) GinRouterConfigOption {
 	return func(config *RouterConfig) {
@@ -170,39 +151,10 @@ func WithGinRouterLogSaveLog(f func(ReqLog)) GinRouterConfigOption {
 	}
 }
 
-// WithGinRouterLogRecordRequestBody 用来启用请求体记录，并可指定捕获上限。
-func WithGinRouterLogRecordRequestBody(limit int64) GinRouterConfigOption {
+// WithGinRouterLogRecordHeaderKeys 用来指定需要记录到请求日志中的请求头。
+func WithGinRouterLogRecordHeaderKeys(keys []string) GinRouterConfigOption {
 	return func(config *RouterConfig) {
-		config.recordRequestBody = true
-		if limit > 0 {
-			config.requestBodyLimit = limit
-		}
-	}
-}
-
-// WithGinRouterLogRecordGETRequests 用来控制是否记录 GET 请求日志。
-func WithGinRouterLogRecordGETRequests(record bool) GinRouterConfigOption {
-	return func(config *RouterConfig) {
-		config.recordGETRequests = record
-	}
-}
-
-// WithGinRouterLogRecordResponseBody 用来启用响应体记录，并可指定捕获上限。
-func WithGinRouterLogRecordResponseBody(limit int64) GinRouterConfigOption {
-	return func(config *RouterConfig) {
-		config.recordResponseBody = true
-		if limit > 0 {
-			config.responseBodyLimit = limit
-		}
-	}
-}
-
-// WithGinRouterLogBriefResponseBodyLimit 用来设置 brief 模式下的响应体捕获上限。
-func WithGinRouterLogBriefResponseBodyLimit(limit int64) GinRouterConfigOption {
-	return func(config *RouterConfig) {
-		if limit > 0 {
-			config.briefResponseBodyLimit = limit
-		}
+		config.recordHeaderKeys = keys
 	}
 }
 
@@ -229,16 +181,9 @@ func initPrivateRouter(config RouterConfig) *gin.Engine {
 	config.globalMiddleware = append(config.globalMiddleware, MiddlewareTraceID(), MiddlewareRequestTime(), MiddlewareRecovery())
 	if !config.skipLog {
 		config.globalMiddleware = append(config.globalMiddleware, MiddlewareLogger(MiddlewareLogConfig{
-			HeaderKeys:             config.recordHeaderKeys,
-			SaveLog:                config.saveLog,
-			LogWriter:              config.logWriter,
-			ContentKeys:            config.contentKeys,
-			RecordGETRequests:      config.recordGETRequests,
-			RecordRequestBody:      config.recordRequestBody,
-			RecordResponseBody:     config.recordResponseBody,
-			RequestBodyLimit:       config.requestBodyLimit,
-			ResponseBodyLimit:      config.responseBodyLimit,
-			BriefResponseBodyLimit: config.briefResponseBodyLimit,
+			HeaderKeys: config.recordHeaderKeys,
+			SaveLog:    config.saveLog,
+			LogWriter:  config.logWriter,
 		}))
 	}
 
