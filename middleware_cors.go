@@ -8,7 +8,7 @@ import (
 )
 
 // Cors 用来为 gin 路由添加通用的跨域响应头。
-// 传入允许的 Origin 白名单；不传则允许所有 Origin（仅适用于开发环境）。
+// 传入允许的 Origin 白名单；不传则默认不放行跨域请求，避免把带凭证的响应暴露给任意站点。
 func Cors(allowedOrigins ...string) gin.HandlerFunc {
 	const (
 		allowMethods  = "POST, GET, OPTIONS, PUT, DELETE"
@@ -25,31 +25,29 @@ func Cors(allowedOrigins ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader(HeaderOrigin)
 
-		if len(originSet) > 0 {
-			// 白名单模式
-			if _, ok := originSet[origin]; ok {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
-				c.Header("Access-Control-Allow-Credentials", "true")
-			} else {
-				// Origin 不在白名单中，不设置 CORS 头
-				if strings.EqualFold(c.Request.Method, http.MethodOptions) {
-					c.AbortWithStatus(http.StatusForbidden)
-					return
-				}
-				c.Next()
+		if len(originSet) == 0 {
+			// 默认不放行跨域，避免危险的“反射 Origin + 带凭证”行为。
+			if origin != "" && strings.EqualFold(c.Request.Method, http.MethodOptions) {
+				c.AbortWithStatus(http.StatusForbidden)
 				return
 			}
+			c.Next()
+			return
+		}
+
+		// 白名单模式
+		if _, ok := originSet[origin]; ok {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Credentials", "true")
 		} else {
-			// 未配置白名单，允许所有（开发模式）
-			if origin != "" {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
-				c.Header("Access-Control-Allow-Credentials", "true")
-			} else {
-				c.Header("Access-Control-Allow-Origin", "*")
-				c.Header("Access-Control-Allow-Credentials", "false")
+			// Origin 不在白名单中，不设置 CORS 头。
+			if strings.EqualFold(c.Request.Method, http.MethodOptions) {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
 			}
+			c.Next()
+			return
 		}
 
 		c.Header("Access-Control-Allow-Methods", allowMethods)

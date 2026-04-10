@@ -136,13 +136,11 @@ func RandomString(length int) (string, error) {
 
 // RandomStringNoErr 用来快速生成一个 6 位随机字符串。
 func RandomStringNoErr() string {
-	var charset = RandomCharacterSetAllStr().String()
-	var seededRand = mrand.New(mrand.NewSource(Now().UnixNano()))
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
+	randomValue, err := RandomString(6)
+	if err != nil {
+		panic(err)
 	}
-	return string(b)
+	return randomValue
 }
 
 // RandomStringWithPrefix 用来生成带前后缀的随机字符串。

@@ -1,6 +1,7 @@
 package wd
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -89,6 +90,19 @@ func WithJWTParseOptions(opts ...jwt.ParserOption) JWTOption {
 
 // WithJWTCookie 设置 Cookie 配置并启用 Cookie 发送。
 func WithJWTCookie(cfg JWTCookieConfig) JWTOption {
+	if cfg.Name == "" {
+		cfg.Name = "jwt"
+	}
+	if cfg.SameSite == 0 {
+		cfg.SameSite = http.SameSiteLaxMode
+	}
+	// 对认证 Cookie 采用安全默认值；如需显式关闭，可继续用 WithJWTCustom 覆盖。
+	if !cfg.Secure {
+		cfg.Secure = true
+	}
+	if !cfg.HTTPOnly {
+		cfg.HTTPOnly = true
+	}
 	return func(mw *GinJWTMiddleware) { mw.Cookie = &cfg }
 }
 

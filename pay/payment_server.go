@@ -59,13 +59,13 @@ func (wx *WXPay) refund(c *gin.Context) {
 func (wx *WXPay) wxPayCallback(c *gin.Context) {
 	res, err := wx.payNotify(c.Request, wx.payNotifyHandler)
 	if err != nil {
-		c.XML(500, err.Error())
+		writePaymentCallbackFailure(c)
 		return
 	}
 
 	err = res.Write(c.Writer)
 	if err != nil {
-		c.XML(500, err.Error())
+		writePaymentCallbackFailure(c)
 		return
 	}
 }
@@ -73,13 +73,13 @@ func (wx *WXPay) wxPayCallback(c *gin.Context) {
 func (wx *WXPay) wxRefundCallback(c *gin.Context) {
 	res, err := wx.refundNotify(c.Request, wx.refundNotifyHandler)
 	if err != nil {
-		c.XML(500, err.Error())
+		writePaymentCallbackFailure(c)
 		return
 	}
 
 	err = res.Write(c.Writer)
 	if err != nil {
-		c.XML(500, err.Error())
+		writePaymentCallbackFailure(c)
 		return
 	}
 }
@@ -184,7 +184,6 @@ func (wx *WXPay) Refund(req *RefundRequest) (*RefundResp, error) {
 		return nil, err
 	}
 	if refund.TransactionID == "" {
-		fmt.Println(refund, err)
 		return nil, fmt.Errorf("get transactionID err:%s", refund.Message)
 	}
 	return &RefundResp{
@@ -273,4 +272,9 @@ func (wx *WXPay) QueryRefundOrder(orderId string) (*rResponse.ResponseRefund, er
 		return nil, err
 	}
 	return order, nil
+}
+
+// writePaymentCallbackFailure 用来为支付回调返回通用失败响应，避免泄露内部处理细节。
+func writePaymentCallbackFailure(c *gin.Context) {
+	c.String(http.StatusInternalServerError, "fail")
 }
