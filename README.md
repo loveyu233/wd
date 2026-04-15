@@ -1,31 +1,66 @@
 # wd
 
-`wd` 是一个面向 Go 服务的通用组件库，聚合了 HTTP 服务启动、Gin 中间件、JWT 认证、GORM/Redis 封装、Resty 客户端、Excel/加密/随机数等常用能力，帮助快速搭建可观测、可扩展的业务应用。
+`wd` 是一个偏服务端场景的 Go 工具库，核心目标不是只提供几个零散函数，而是把一个业务项目里最常反复写的能力收拢成一套统一工具：
 
-## 功能亮点
-- **一体化 HTTP 启动器**（`http.go` + `gin_engine.go`）提供公共/私有路由注册、全局/认证中间件注入、健康检查、优雅关闭及运行参数（超时、前缀、日志等）的统一配置接口。
-- **JWT 认证链路**（`auth_jwt.go`）具备登录/退出/刷新处理器、灵活的 Token 提取策略、Cookie 同步、可插拔 payload/授权钩子，并可自动接入 HTTP 启动器的私有路由。
-- **数据访问与缓存**：`gorm.go` 暴露 `InitGormDB`、`GormDefaultLogger`，`redis.go` 封装 `redis.UniversalClient`、分布式锁（redsync）及多种配置项，便于以一致方式管理数据库和 Redis。
-- **可观测中间件**：`middleware_trace_id.go`、`middleware_request_time.go`、`middleware_log.go` 等提供链路日志、TraceID、请求耗时、异常恢复等通用能力；其中请求日志默认只保留请求摘要和业务主动写入的日志条目。
-- **网络与工具集**：`resty.go` 提供默认 HTTP 客户端，`response.go`/`request.go` 统一请求/响应结构，`password.go`、`encrypt.go`、`random.go`、`snowflake.go` 等实现密码、加解密、随机 ID、ID 生成器。
-- **场景扩展**：`auth/`、`payment/`、`message/`、`excel_*` 等子目录按能力组织登录、支付、消息等能力，并在各能力下继续按渠道拆分，便于按需接入。
+- HTTP 服务启动与 Gin 路由组织
+- JWT 认证与 Claims 提取
+- 统一响应、参数校验、PATCH 三态字段
+- GORM 初始化、SQL 日志增强、gorm/gen 代码生成辅助
+- Redis 初始化、Lua 工具脚本、分布式锁、限流、排行榜、库存等场景能力
+- 微信/支付宝登录、支付、消息等业务型工具包
+- Excel 导入导出
+- 时间类型、文件上传、加密、模板、脱敏、随机串等通用工具
+
+这份 README 不再按“文件逐个解释源码”，而是按“当前项目里有哪些工具、分别解决什么问题、怎么接入”来组织。你可以把它当成这个库的使用手册。
+
+## 适合什么项目
+
+`wd` 适合以下类型的 Go 服务项目：
+
+- 使用 `gin` 做 HTTP 接口层
+- 使用 `gorm` / `gorm/gen` 做数据库访问
+- 需要统一错误码、日志、TraceID、响应结构
+- 需要小程序登录、支付、消息、短信等业务接入
+- 需要大量“工具层代码”但不想每个项目都重复造轮子
+
+## 模块地图
+
+| 模块 | 主要文件/包 | 解决的问题 | 主入口 |
+| --- | --- | --- | --- |
+| HTTP 启动 | `http_server.go` `gin_engine.go` | 启动 Gin 服务、组织公开/私有路由、优雅关闭 | `InitHTTPServerAndStart` `NewHTTPServer` |
+| 请求链路日志 | `middleware_log.go` `middleware_trace_id.go` `middleware_request_time.go` `middleware_recovery.go` | TraceID、请求耗时、统一日志、阶段耗时、异常恢复 | `MiddlewareLogger` `BeginStageTiming` |
+| JWT 认证 | `auth_jwt.go` `auth_jwt_options.go` | 登录、鉴权、刷新、Claims 提取、Cookie/RSA 支持 | `NewGinJWTMiddleware` |
+| 响应与错误 | `response.go` `params_verify.go` `gin_param.go` | 统一响应体、错误码、中文参数校验、query/path 参数读取 | `ResponseSuccess` `ResponseError` |
+| PATCH/查询参数 | `patch_field.go` `patch_field_assign.go` `params_precompiled.go` | PATCH 三态字段、分页、范围查询、文件表单辅助 | `Field[T]` `PatchUpdate` `ReqRange` |
+| GORM 工具 | `gorm.go` `gen.go` `gen_field.go` | 初始化 DB、增强 SQL 日志、gorm/gen 代码生成 | `InitGormDB` `InsDB.Gen` |
+| Redis 工具 | `redis.go` `redis_lua.go` | 初始化 Redis、分布式锁、限流、排行榜、库存、Bloom、ID 生成 | `InitRedis` |
+| 定时/权限/搜索 | `cron_task.go` `casbin.go` `es.go` | 分布式定时任务、RBAC、Elasticsearch 批量写入 | `InitCronJob` `InitCasbin` `InitEs` |
+| 认证子包 | `auth/` | 微信/支付宝小程序登录接入 | `auth.Register` |
+| 支付子包 | `payment/` | 微信支付、支付宝支付、回调封装 | `payment.Register` |
+| 消息子包 | `message/` | 公众号、小程序、企业微信机器人、阿里云短信 | `message.Register` 或直接 `New` |
+| Excel 工具 | `excel_export.go` `excel_mapper.go` `excel_math.go` | Excel 导出、导入、坐标换算 | `InitExcelExporter` `InitExcelMapper` |
+| 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
+| 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、Diff 等 | 各文件导出函数 |
 
 ## 安装
+
 ```bash
 go get github.com/loveyu233/wd@latest
 ```
 
-## 快速开始
-下面示例演示了如何：
-1. 初始化 JWT 中间件；
+## 5 分钟快速接入
+
+下面这个例子串起来了最常见的接入方式：
+
+1. 创建 JWT 中间件；
 2. 注册公开/私有路由；
-3. 通过 `InitHTTPServerAndStart` 启动 HTTP 服务并自动接入默认中间件。
+3. 启动 HTTP 服务；
+4. 让私有路由自动走鉴权。
 
 ```go
 package main
 
 import (
-    "log"
     "net/http"
     "time"
 
@@ -33,69 +68,65 @@ import (
     wd "github.com/loveyu233/wd"
 )
 
-type account struct {
-    Username string
-}
-
 type loginReq struct {
     Username string `json:"username" binding:"required"`
     Password string `json:"password" binding:"required"`
 }
 
-// accountPayload 定义 JWT Claims 的负载结构，字段名对应 JSON key。
-type accountPayload struct {
+type user struct {
+    ID       uint64 `json:"id"`
     Username string `json:"username"`
-    LoginAt  int64  `json:"login_at"`
 }
 
-var users = map[string]string{
-    "alice": "123456",
-    "bob":   "654321",
+type claims struct {
+    UserID   uint64 `json:"user_id"`
+    Username string `json:"username"`
 }
 
 func main() {
-    auth, err := wd.NewGinJWTMiddleware(
-        // authenticator: 验证用户身份，返回具体类型
-        func(c *gin.Context) (*account, error) {
+    authMW, err := wd.NewGinJWTMiddleware(
+        func(c *gin.Context) (*user, error) {
             var req loginReq
             if err := c.ShouldBindJSON(&req); err != nil {
                 return nil, err
             }
-            if pwd, ok := users[req.Username]; !ok || pwd != req.Password {
+            if req.Username != "demo" || req.Password != "123456" {
                 return nil, wd.MsgErrBadRequest("账号或密码错误")
             }
-            return &account{Username: req.Username}, nil
+            return &user{ID: 1, Username: req.Username}, nil
         },
-        // payloadFunc: 返回负载结构体，自动序列化为 JWT Claims
-        func(data *account) accountPayload {
-            return accountPayload{
-                Username: data.Username,
-                LoginAt:  time.Now().Unix(),
-            }
+        func(data *user) claims {
+            return claims{UserID: data.ID, Username: data.Username}
         },
-        // identityHandler: 直接使用结构体字段，无需从 map 中读取
-        func(c *gin.Context, payload accountPayload) (any, error) {
-            return payload.Username, nil
+        func(c *gin.Context, payload claims) (any, error) {
+            return payload.UserID, nil
         },
-        wd.WithJWTRealm("demo zone"),
-        wd.WithJWTKey([]byte("change-me")),
-        wd.WithJWTTimeout(30*time.Minute),
-        wd.WithJWTMaxRefresh(time.Hour),
-        wd.WithJWTIdentityKey("username"),
+        wd.WithJWTRealm("demo"),
+        wd.WithJWTKey([]byte("replace-with-your-secret")),
+        wd.WithJWTTimeout(2*time.Hour),
+        wd.WithJWTIdentityKey("user_id"),
     )
     if err != nil {
-        log.Fatalf("init jwt failed: %v", err)
+        panic(err)
     }
 
     wd.PublicRoutes.Append(func(rg *gin.RouterGroup) {
-        rg.POST("/login", auth.LoginHandler())
+        rg.POST("/login", authMW.LoginHandler())
+        rg.GET("/ping", func(c *gin.Context) {
+            wd.ResponseSuccess(c, gin.H{"pong": true})
+        })
     })
+
     wd.PrivateRoutes.Append(func(rg *gin.RouterGroup) {
         rg.GET("/profile", func(c *gin.Context) {
-            payload, _ := wd.ExtractClaimsAs[accountPayload](c)
+            payload, err := wd.ExtractClaimsAs[claims](c)
+            if err != nil {
+                wd.ResponseError(c, err)
+                return
+            }
             c.JSON(http.StatusOK, gin.H{
-                "payload": payload,
-                "token":   wd.GetToken(c),
+                "code": 200,
+                "data": payload,
             })
         })
     })
@@ -103,74 +134,622 @@ func main() {
     wd.InitHTTPServerAndStart(
         ":8080",
         wd.WithGinRouterPrefix("/api"),
+        wd.WithGinRouterAuthHandler(authMW.MiddlewareFunc()),
         wd.WithGinRouterModel(wd.GinModelDebug),
     )
 }
 ```
 
-> `InitHTTPServerAndStart` 会阻塞当前 goroutine 并监听 SIGINT/SIGTERM；按 `Ctrl+C` 即可触发优雅关闭。
+启动后：
 
-### 运行示例
-仓库在 `test/jwt_demo` 中提供了更完整的演示，包括登录、刷新、写 Cookie 与 Admin 路由：
-```bash
-go run ./test/jwt_demo
+- 公开接口：`POST /api/login`、`GET /api/ping`
+- 私有接口：`GET /api/profile`
+- 健康检查：`GET /api/healthz`
+
+---
+
+## 1. HTTP 服务与 Gin 工具
+
+### 1.1 这个模块做什么
+
+`http_server.go` + `gin_engine.go` 负责把 Gin 服务的常规样板代码统一掉：
+
+- 公开路由和私有路由分开注册
+- 自动挂载 TraceID、请求耗时、Recovery、请求日志中间件
+- 支持 API 前缀、超时、header 限制、全局中间件、鉴权中间件
+- 支持优雅关闭
+
+### 1.2 主要入口
+
+- `wd.PublicRoutes.Append(func(*gin.RouterGroup))`
+- `wd.PrivateRoutes.Append(func(*gin.RouterGroup))`
+- `wd.InitHTTPServerAndStart(addr, opts...)`
+- `wd.NewHTTPServer(addr, opts...)`
+
+### 1.3 常用选项
+
+- `wd.WithGinRouterPrefix("/api")`：统一前缀
+- `wd.WithGinRouterAuthHandler(authMW.MiddlewareFunc())`：私有路由鉴权链
+- `wd.WithGinRouterGlobalMiddleware(...)`：追加全局中间件
+- `wd.WithGinRouterModel(wd.GinModelDebug)`：切换 Gin 模式
+- `wd.WithGinReadTimeout(...)` / `wd.WithGinWriteTimeout(...)`
+- `wd.WithGinRouterLogRecordHeaderKeys([]string{"X-Request-Id"})`
+- `wd.WithGinRouterLogSaveLog(func(wd.ReqLog){ ... })`
+
+### 1.4 什么时候用 `PublicRoutes` / `PrivateRoutes`
+
+- `PublicRoutes`：无需登录即可访问的接口，如登录、回调、健康检查
+- `PrivateRoutes`：必须在 `WithGinRouterAuthHandler(...)` 下访问的接口
+
+示例：
+
+```go
+wd.PublicRoutes.Append(func(rg *gin.RouterGroup) {
+    rg.POST("/login", authMW.LoginHandler())
+    rg.POST("/payment/callback", callbackHandler)
+})
+
+wd.PrivateRoutes.Append(func(rg *gin.RouterGroup) {
+    rg.GET("/me", profileHandler)
+    rg.GET("/orders", orderListHandler)
+})
 ```
-使用 `curl` 验证：
-```bash
-curl -X POST http://127.0.0.1:8080/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"123456"}'
+
+---
+
+## 2. 请求日志、TraceID 与阶段耗时
+
+### 2.1 默认会自动挂什么
+
+通过 `InitHTTPServerAndStart` / `NewHTTPServer` 初始化服务时，会自动挂上：
+
+- `MiddlewareTraceID()`
+- `MiddlewareRequestTime()`
+- `MiddlewareRecovery()`
+- `MiddlewareLogger(...)`（除非显式 `WithGinSkipLog(true)`）
+
+### 2.2 日志能力
+
+`middleware_log.go` 不是简单打印一行 access log，而是做了“请求级日志聚合”：
+
+- 同一次请求内的业务日志先进入缓冲区
+- 请求结束时一次性输出
+- 可以带结构化字段、对象 payload、SQL 日志、阶段耗时
+- 可以自定义快照模式，避免日志被后续对象修改污染
+
+### 2.3 常用 API
+
+- `wd.WriteGinInfoLog(c, key, format, args...)`
+- `wd.WriteGinWarnLog(c, key, format, args...)`
+- `wd.WriteGinErrAnyLog(c, key, payload)`
+- `wd.GinLogSetModuleName("订单模块")`
+- `wd.GinLogSetOptionName("创建订单")`
+- `wd.BeginStageTiming(c, "查询数据库")`
+- `wd.GetTraceID(c)`
+
+### 2.4 记录阶段耗时示例
+
+```go
+stage := wd.BeginStageTiming(c, "查询订单")
+order, err := query.Order.WithContext(c).Where(query.Order.ID.Eq(id)).First()
+stage.Commit()
+if err != nil {
+    wd.ResponseError(c, err)
+    return
+}
+wd.WriteGinInfoAnyLog(c, "order_result", order)
+wd.ResponseSuccess(c, order)
 ```
-保留返回的 token 后访问受保护接口：
-```bash
-curl http://127.0.0.1:8080/api/profile \
-  -H "Authorization: Bearer <TOKEN>"
+
+---
+
+## 3. JWT 认证工具
+
+### 3.1 适合什么场景
+
+`auth_jwt.go` 适合两类场景：
+
+- 传统用户名密码登录 -> JWT
+- 第三方登录成功后，复用 `TokenGenerator` 发业务 token
+
+### 3.2 核心能力
+
+- 登录：`LoginHandler()`
+- 鉴权：`MiddlewareFunc()`
+- 刷新：`RefreshHandler()` / `RefreshToken()`
+- 手动发 token：`TokenGenerator(data)`
+- Claims 提取：`ExtractClaimsAs[T](c)`
+- 身份读取：`GetIdentityAs[T](mw, c)`
+- 原始 token 读取：`GetToken(c)`
+- 支持 Header / Query / Cookie / Param / Form 多来源取 token
+- 支持 RSA、公私钥、Cookie 同步写入
+
+### 3.3 最常用配置项
+
+- `wd.WithJWTKey([]byte("secret"))`
+- `wd.WithJWTTimeout(2*time.Hour)`
+- `wd.WithJWTMaxRefresh(24*time.Hour)`
+- `wd.WithJWTIdentityKey("user_id")`
+- `wd.WithJWTTokenLookup("header:Authorization,cookie:jwt")`
+- `wd.WithJWTCookie(...)`
+- `wd.WithJWTRSA(...)`
+
+### 3.4 第三方登录后手动签发 token
+
+这个模式在 `auth/wechatmini`、`auth/alipaymini` 里很常见：
+
+```go
+jwtMW, _ := wd.NewGinJWTMiddleware(
+    func(c *gin.Context) (*user, error) {
+        return nil, wd.MsgErrBadRequest("当前示例不走 LoginHandler")
+    },
+    func(data *user) claims {
+        return claims{UserID: data.ID, Username: data.Username}
+    },
+    func(c *gin.Context, payload claims) (any, error) {
+        return payload.UserID, nil
+    },
+    wd.WithJWTKey([]byte("secret")),
+)
+
+token, expire, err := jwtMW.TokenGenerator(&user{ID: 1, Username: "demo"})
+_ = expire
+_ = token
+_ = err
 ```
 
-## 能力模块详解
-新的扩展能力按 `auth/`、`payment/`、`message/` 三个模块组织，每个模块下再按渠道拆分。对使用者来说，推荐的心智模型是：
+---
 
-1. 先按业务能力选择模块：登录、支付、消息；
-2. 再按接入渠道选择具体子包：微信、支付宝、公众号、企业微信、短信；
-3. 最后决定是让 `wd` 自己初始化第三方 SDK，还是复用你项目里已有的 SDK 客户端。
+## 4. 统一响应、错误与参数校验
 
-三个模块都遵循同样的接入风格：
+### 4.1 响应结构
 
-- `New(...)`：按配置初始化第三方客户端和能力服务
-- `NewWithClient(...)`：复用调用方已经初始化好的第三方客户端
-- `RegisterRoutes(...)`：把该能力的 HTTP 路由挂到 gin 路由组
-- `Register(...)`：按能力批量注册多个服务
+`response.go` 统一响应格式：
 
-你可以直接参考 `test/projectflow/` 下的示例：
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {}
+}
+```
 
-- `test/projectflow/auth_flow_test.go`
-- `test/projectflow/payment_flow_test.go`
-- `test/projectflow/message_flow_test.go`
-- `test/projectflow/wechatmini_real_flow_test.go`
+### 4.2 常用函数
 
-最后一份 `wechatmini_real_flow_test.go` 演示了更接近真实商城项目的流程：微信小程序登录、查人、注册、签发 JWT、创建订单、发起支付、支付回调改订单状态。
+- `wd.ResponseSuccess(c, data)`
+- `wd.ResponseSuccessMsg(c, "保存成功")`
+- `wd.ResponseSuccessToken(c, token)`
+- `wd.ResponseSuccessEncryptData(c, data, customKeyFunc)`
+- `wd.ResponseError(c, err)`
+- `wd.ResponseParamError(c, err)`
 
-### 认证模块 `auth/`
-`auth/` 负责第三方登录场景下的“身份换业务用户、业务用户换 token”这条链路。
+### 4.3 AppError 体系
 
-当前已经内置两个渠道：
+`wd` 内置了一套业务错误码：
+
+- 外部服务失败：`MsgErrRequestWechat` / `MsgErrRequestAliPay` 等
+- 参数错误：`MsgErrInvalidParam`
+- 未登录：`MsgErrUnauthorized`
+- 权限不足：`MsgErrForbiddenAuth`
+- 数据不存在：`MsgErrNotFound`
+- 冲突：`MsgErrUniqueIndexConflict` / `MsgErrVERSION_CONFLICT`
+- 服务错误：`MsgErrServerBusy` / `MsgErrDatabase` / `MsgErrRedis`
+
+如果你已经有统一错误治理，这套错误码可以直接拿来当项目默认规范。
+
+### 4.4 参数辅助
+
+- `wd.GinQueryDefault[T](c, key, defaultValue)`
+- `wd.GinQueryRequired[T](c, key)`
+- `wd.GinPathRequired[T](c, key)`
+- `wd.TranslateError(err)`：把 Gin / validator / JSON 解析错误翻成中文
+
+示例：
+
+```go
+orderID, err := wd.GinPathRequired[uint64](c, "id")
+if err != nil {
+    wd.ResponseParamError(c, err)
+    return
+}
+```
+
+---
+
+## 5. PATCH 三态字段、分页、范围查询、文件参数
+
+### 5.1 `Field[T]`：解决 PATCH 场景最难处理的问题
+
+普通结构体字段无法区分三件事：
+
+1. 前端没传；
+2. 前端显式传了 `null`；
+3. 前端传了新值。
+
+`wd.Field[T]` 专门解决这个问题。
+
+```go
+type UpdateUserReq struct {
+    Nickname wd.Field[string]      `json:"nickname" binding:"min=2,max=8"`
+    Birthday wd.Field[wd.DateOnly] `json:"birthday"`
+}
+```
+
+核心字段：
+
+- `Set`：这个字段有没有在请求里出现
+- `Null`：是不是显式传了 `null`
+- `Value`：实际值
+
+### 5.2 `PatchUpdate`：把 PATCH 请求直接转成 gorm/gen 赋值表达式
+
+```go
+updates := []field.AssignExpr{}
+
+assignExpr, changed, err := wd.PatchUpdate(req.Nickname, oldUser.Nickname, query.User.Nickname)
+if err != nil {
+    wd.ResponseError(c, err)
+    return
+}
+if changed {
+    updates = append(updates, assignExpr)
+}
+```
+
+适合配合 `gorm/gen` 的 `UpdateColumnSimple(...)` 使用。
+
+### 5.3 预编译请求结构
+
+`params_precompiled.go` 提供了一组非常实用的请求结构：
+
+- `wd.ReqRange[T]`：时间范围
+- `wd.ReqKeyword`：关键词模糊查询
+- `wd.ReqPageSize`：分页
+- `wd.ReqFile`：单文件上传表单
+- `wd.ReqFiles`：多文件上传表单
+- `wd.ApplyPage(page, query.User)`：把分页应用到 `gorm/gen` 查询对象
+
+时间范围示例：
+
+```go
+type ListReq struct {
+    wd.ReqRange[wd.DateTime]
+    wd.ReqPageSize
+}
+
+var req ListReq
+if err := c.ShouldBindQuery(&req); err != nil {
+    wd.ResponseParamError(c, err)
+    return
+}
+
+expr, err := req.ReqRange.WhereExpr(query.Order, query.Order.CreatedAt)
+if err != nil {
+    wd.ResponseError(c, err)
+    return
+}
+
+list, err := wd.ApplyPage(req.ReqPageSize, query.Order).
+    Where(expr).
+    Find()
+```
+
+文件表单示例：
+
+```go
+type UploadReq struct {
+    wd.ReqFile
+}
+
+var req UploadReq
+if err := c.ShouldBind(&req); err != nil {
+    wd.ResponseParamError(c, err)
+    return
+}
+
+contentType, _ := req.ContentType()
+size, _ := req.Size()
+wd.ResponseSuccess(c, gin.H{"content_type": contentType, "size": size})
+```
+
+---
+
+## 6. GORM 初始化、SQL 日志与 gorm/gen 工具
+
+### 6.1 初始化数据库
+
+入口是 `wd.InitGormDB(...)`。
+
+```go
+err := wd.InitGormDB(
+    wd.GormConnConfig{
+        Username: "root",
+        Password: "",
+        Host:     "127.0.0.1",
+        Port:     3306,
+        Database: "demo",
+        Params: map[string]any{
+            "charset":   "utf8mb4",
+            "parseTime": true,
+            "loc":       "Asia/Shanghai",
+        },
+    },
+    wd.GormDefaultLogger(
+        wd.WithGormConfigLogLevel(4),
+        wd.WithGormConfigCallerPathMode(wd.GormCallerPathModeModuleRelative),
+    ),
+)
+if err != nil {
+    panic(err)
+}
+```
+
+初始化完成后，全局连接在 `wd.InsDB`。
+
+### 6.2 GORM 日志增强
+
+`gorm.go` 做了两件很实用的事情：
+
+- 给 GORM SQL 日志补上调用方文件定位
+- 支持把 SQL 日志挂入请求级日志缓冲区
+
+可用工具：
+
+- `wd.GormDefaultLogger(...)`
+- `wd.WrapGormLoggerWithRequestLogger(base)`
+
+### 6.3 运行 gorm/gen
+
+入口是 `wd.InsDB.Gen(...)`。
+
+```go
+wd.InsDB.Gen(
+    wd.WithGenOutFilePath("test/httpt/gen/query"),
+    wd.WithGenUseTablesName("user", "audit_log"),
+    wd.WithGenGlobalColumnTypeAddDatatypes(),
+    wd.WithGenTableColumnType(map[string][]wd.GenFieldType{
+        "user": {
+            {
+                ColumnName: "profile",
+                ColumnType: "datatypes.JSONMap",
+                IsJsonStatusType: true,
+            },
+        },
+    }),
+)
+```
+
+### 6.4 `gen_field.go`：生成查询表达式的小工具
+
+常用函数：
+
+- `wd.GenJSONArrayQuery(column)`
+- `wd.GenJSONArrayQueryContainsValue(column, value)`
+- `wd.GenCustomTimeBetween(table, column, left, right)`
+- `wd.GenNewBetween(table, column, left, right)`
+- `wd.GenNewUnsafeFieldRaw(rawSQL, vars...)`
+
+如果你的项目已经大量使用 `gorm/gen`，这些函数能显著减少重复拼条件代码。
+
+---
+
+## 7. 时间类型与时间工具
+
+### 7.1 四个自定义时间类型
+
+`sql_type.go` + `time.go` 提供了四个可直接用于：
+
+- JSON 序列化
+- Gin 参数绑定
+- GORM Scan / Value
+- 业务计算
+
+的类型：
+
+- `wd.DateTime`：`YYYY-MM-DD HH:MM:SS`
+- `wd.DateOnly`：`YYYY-MM-DD`
+- `wd.TimeOnly`：`HH:MM:SS`
+- `wd.TimeHM`：`HH:MM`
+
+示例：
+
+```go
+type User struct {
+    Birthday wd.DateOnly `json:"birthday"`
+    StartAt  wd.DateTime `json:"start_at"`
+}
+```
+
+### 7.2 常用时间函数
+
+- `wd.Now()`
+- `wd.NowAsDateTime()` / `wd.NowAsDateOnly()`
+- `wd.ParseDateTimeValue(str)`
+- `wd.NewDateOnlyString("2026-04-15")`
+- `wd.NewTimeHMString("18:30")`
+- `wd.FormatDateTime(t)`
+- `wd.TodayRange()` / `wd.YesterdayRange()`
+- `wd.CurrentMonthRange()` / `wd.LastMonthRange()`
+- `wd.HasTimeConflict(...)`
+
+### 7.3 典型场景
+
+- 数据库模型字段直接用 `wd.DateOnly` / `wd.DateTime`
+- 查询参数里直接绑定 `ReqRange[wd.DateOnly]`
+- 排班、营业时间、预约时间冲突判断用 `TimeRange`
+
+---
+
+## 8. Redis 初始化、分布式锁与 Lua 工具集
+
+### 8.1 初始化 Redis
+
+```go
+err := wd.InitRedis(
+    wd.WithRedisAddressOption([]string{"127.0.0.1:6379"}),
+    wd.WithRedisDBOption(0),
+    wd.WithRedisPasswordOption(""),
+)
+if err != nil {
+    panic(err)
+}
+```
+
+初始化完成后，全局客户端在 `wd.InsRedis`。
+
+### 8.2 常用基础能力
+
+- `wd.InsRedis.NewLock(key)`：基于 redsync 的分布式锁
+- `wd.InsRedis.SetCaptcha(key, value, ttl)`
+- `wd.InsRedis.GetCaptcha(key)`
+- `wd.InsRedis.DelCaptcha(key)`
+- `wd.InsRedis.FindAllBitMapByTargetValue(key, targetValue)`
+
+### 8.3 Lua 脚本工具覆盖的场景
+
+`redis_lua.go` 不是单一脚本，而是一组业务高频场景脚本封装：
+
+- 排行榜区间查询、成员排名查询
+- 排行榜附带 Hash 扩展信息查询
+- 分布式锁 / 解锁
+- 滑动窗口限流
+- 有上限的计数器递增
+- 限长队列 push
+- 带版本号的 set
+- 库存扣减
+- HyperLogLog 计数
+- 延迟队列弹出
+- Bloom Filter add / exists
+- Redis 自增 ID
+- 代扣幂等号计数
+
+### 8.4 几个代表性用法
+
+排行榜：
+
+```go
+info, err := wd.InsRedis.LuaRedisZSetGetMemberScoreAndRankDesc("rank:score", "u_1001")
+list, err := wd.InsRedis.LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreDesc("rank:score", 0, 9, "u_1001")
+_ = info
+_ = list
+_ = err
+```
+
+限流：
+
+```go
+count, err := wd.InsRedis.LuaRedisRateLimit("api:user:1001", 60, 20)
+if err != nil {
+    return err
+}
+if count > 20 {
+    return wd.MsgErrBadRequest("请求过于频繁")
+}
+```
+
+库存扣减：
+
+```go
+result, err := wd.InsRedis.LuaRedisDecrStock("stock:sku:1", 1)
+if err != nil {
+    return err
+}
+if !result.Success {
+    return wd.MsgErrBadRequest("库存不足")
+}
+```
+
+---
+
+## 9. 定时任务、Casbin 权限与 Elasticsearch
+
+### 9.1 定时任务 `cron_task.go`
+
+初始化：
+
+```go
+err := wd.InitCronJob(
+    wd.WithBeforeJobRuns(func(jobID uuid.UUID, jobName string) {
+        println("before", jobName)
+    }),
+)
+if err != nil {
+    panic(err)
+}
+```
+
+常用方法：
+
+- `RunJobEveryDuration(...)`
+- `RunJobAtTime(...)`
+- `RunJobEveryDay(...)`
+- `RunJobCrontab(...)`
+- `RunJobEveryDurationTheOne(...)` / `RunJobCrontabTheOne(...)`
+
+带 `TheOne` 后缀的方法会依赖 Redis 锁，避免多实例重复注册任务。
+
+### 9.2 Casbin 权限 `casbin.go`
+
+初始化：
+
+```go
+if err := wd.InitCasbin(); err != nil {
+    panic(err)
+}
+if err := wd.InsCasbin.InitCasbinRule(); err != nil {
+    panic(err)
+}
+```
+
+Gin 鉴权中间件：
+
+```go
+r.Use(wd.InsCasbin.CustomGinMiddleware(func(c *gin.Context) (string, error) {
+    return "admin", nil
+}))
+```
+
+常用方法：
+
+- `CustomAddPoliciesEx`
+- `CustomRemovePoliciesEx`
+- `CustomAddRolesForUser`
+- `CustomGetPermissionsForRole`
+- `CustomGetUserAllInfo`
+
+### 9.3 Elasticsearch `es.go`
+
+```go
+err := wd.InitEs(
+    wd.WithEsConfigAddresses("http://127.0.0.1:9200"),
+    wd.WithEsConfigBatchIndex("audit-log"),
+)
+if err != nil {
+    panic(err)
+}
+
+_ = wd.InsEs.CustomBulkInsertData(map[string]any{"id": 1, "msg": "hello"})
+_ = wd.InsEs.CustomBulkClose()
+```
+
+适合日志归档、搜索索引、批量同步等场景。
+
+---
+
+## 10. 认证子包 `auth/`
+
+### 10.1 这个子包解决什么问题
+
+`auth/` 不是通用 JWT，而是“第三方身份 -> 业务用户 -> 业务 token”这一层封装。
+
+当前内置：
 
 - `auth/wechatmini`
 - `auth/alipaymini`
 
-#### 目录说明
+### 10.2 业务方需要实现什么
 
-```text
-auth/
-  register.go        # 统一注册入口
-  types.go           # 通用身份类型与 UserHandler 接口
-  response.go        # 统一 token / 响应输出辅助
-  wechatmini/        # 微信小程序登录
-  alipaymini/        # 支付宝小程序登录
-```
-
-#### 通用接口
-认证模块最核心的是 `auth.UserHandler`。第三方渠道负责把 `UnionID/OpenID/手机号` 等外部身份信息整理出来，业务方只需要实现“查用户、建用户、发 token”这三个步骤：
+核心接口是 `auth.UserHandler`：
 
 ```go
 type UserHandler interface {
@@ -180,319 +759,204 @@ type UserHandler interface {
 }
 ```
 
-其中 `auth.Identity` 会统一承接：
+你只需要关心：
 
-- `Provider`
-- `UnionID`
-- `OpenID`
-- `PhoneNumber`
-- `ClientIP`
+- 根据第三方身份查业务用户
+- 没有用户时自动创建
+- 最后生成你自己的 token 或响应体
 
-也就是说，`wd` 负责把第三方身份“解出来”，你负责把它“落到业务库里”。
+### 10.3 微信小程序登录
 
-#### 微信小程序登录用法
-下面示例更接近真实项目：用户通过微信 `code` 登录，系统根据微信身份查会员，不存在则自动注册并签发 JWT。
+初始化：
 
 ```go
-package main
-
-import (
-    "context"
-    "time"
-
-    "github.com/gin-gonic/gin"
-    wd "github.com/loveyu233/wd"
-    "github.com/loveyu233/wd/auth"
-    authwechatmini "github.com/loveyu233/wd/auth/wechatmini"
+svc, err := authwechatmini.New(
+    authwechatmini.Config{
+        AppID:          "wx-demo",
+        Secret:         "secret",
+        SaveHandlerLog: true,
+    },
+    yourUserHandler,
 )
-
-type member struct {
-    ID          int64
-    UnionID     string
-    OpenID      string
-    PhoneNumber string
-    Nickname    string
-}
-
-type claims struct {
-    MemberID int64  `json:"member_id"`
-    OpenID   string `json:"open_id"`
-    Nickname string `json:"nickname"`
-}
-
-type memberAuthHandler struct {
-    jwt *wd.GinJWTMiddleware
-}
-
-func (h *memberAuthHandler) FindUser(ctx context.Context, identity auth.Identity) (any, bool, error) {
-    // 真实项目里建议先按 UnionID 查，不存在时再按 OpenID 查
-    return nil, false, nil
-}
-
-func (h *memberAuthHandler) CreateUser(ctx context.Context, identity auth.Identity) (any, error) {
-    // 真实项目里这里会落库
-    return &member{
-        ID:          1001,
-        UnionID:     identity.UnionID,
-        OpenID:      identity.OpenID,
-        PhoneNumber: identity.PhoneNumber,
-        Nickname:    "微信用户",
-    }, nil
-}
-
-func (h *memberAuthHandler) GenerateToken(ctx context.Context, user any, identity auth.Identity, sessionValue string) (any, error) {
-    memberData := user.(*member)
-    token, _, err := h.jwt.TokenGenerator(memberData)
-    return token, err
-}
-
-func buildAuthModule() (*authwechatmini.Service, error) {
-    jwtMW, err := wd.NewGinJWTMiddleware(
-        func(c *gin.Context) (*member, error) {
-            return nil, wd.MsgErrBadRequest("这个示例使用 TokenGenerator 发 token，不走 LoginHandler")
-        },
-        func(data *member) claims {
-            return claims{
-                MemberID: data.ID,
-                OpenID:   data.OpenID,
-                Nickname: data.Nickname,
-            }
-        },
-        func(c *gin.Context, payload claims) (any, error) {
-            return payload.MemberID, nil
-        },
-        wd.WithJWTKey([]byte("mall-demo-secret")),
-        wd.WithJWTTimeout(2*time.Hour),
-        wd.WithJWTIdentityKey("member_id"),
-    )
-    if err != nil {
-        return nil, err
-    }
-
-    return authwechatmini.New(authwechatmini.Config{
-        AppID:  "wx-app-id",
-        Secret: "wx-secret",
-    }, &memberAuthHandler{jwt: jwtMW})
-}
-
-func registerAuth(r *gin.RouterGroup) error {
-    svc, err := buildAuthModule()
-    if err != nil {
-        return err
-    }
-
-    auth.Register(r.Group("/auth/wechatmini"), svc)
-    return nil
-}
 ```
 
-#### 支付宝小程序登录用法
-`auth/alipaymini` 的业务侧接口和微信保持一致，差别主要在初始化配置：
+或者直接复用已有 SDK：
 
 ```go
-svc, err := authalipaymini.New(authalipaymini.Config{
-    AppID:                "alipay-app-id",
-    AppPrivateKey:        "your-private-key",
-    AESKey:               "your-aes-key",
-    AppPublicKeyFilePath: "./cert/alipay/appPublicKey.crt",
-    AliPublicKeyFilePath: "./cert/alipay/alipayPublicKey_RSA2.crt",
-    AliRootKeyFilePath:   "./cert/alipay/alipayRootCert.crt",
-}, handler)
+svc, err := authwechatmini.NewWithClient(miniClient, yourUserHandler, true)
 ```
 
-如果你的项目已经自己维护了支付宝 SDK 客户端，也可以直接复用：
+注册路由：
 
 ```go
-svc, err := authalipaymini.NewWithClient(alipayClient, handler, true)
+auth.Register(r.Group("/wechatmini"), svc)
 ```
 
-#### 认证模块推荐实践
+会注册：
 
-- `FindUser` 里优先按 `UnionID` 查，`UnionID` 缺失时再考虑 `OpenID`
-- `CreateUser` 里尽量把 `UnionID/OpenID/手机号` 一次性保存完整，避免后续补绑定复杂化
-- `GenerateToken` 建议统一复用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)`
-- 如果业务方已经有统一 JWT 中间件，认证模块只负责发 token，不负责自己重复造一套鉴权体系
+- `POST /wechatmini/login`
 
-### 支付模块 `payment/`
-`payment/` 负责“组装支付请求、接收回调、驱动订单状态流转”。
+除了登录，还支持：
 
-当前已经内置两个渠道：
+- `CreateQRCode`
+- `GetCode`
+- `GetUnlimitedCode`
+
+也就是它不只是“登录服务”，也顺手封了小程序码生成能力。
+
+### 10.4 支付宝小程序登录
+
+初始化：
+
+```go
+svc, err := authalipaymini.New(
+    authalipaymini.Config{
+        AppID:                "2021xxxx",
+        AppPrivateKey:        "private-key",
+        AESKey:               "aes-key-base64",
+        AppPublicKeyFilePath: "./appPublicKey.pem",
+        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
+        AliRootKeyFilePath:   "./alipayRootCert.crt",
+        SaveHandlerLog:       true,
+    },
+    yourUserHandler,
+)
+```
+
+注册后会暴露：
+
+- `POST /alipaymini/login`
+
+### 10.5 推荐接入方式
+
+认证模块最推荐的模式是：
+
+- 第三方登录模块负责拿到 `UnionID/OpenID/手机号`
+- 业务项目负责落库和绑定会员
+- token 统一用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)` 生成
+
+这样业务边界最清晰。
+
+---
+
+## 11. 支付子包 `payment/`
+
+当前内置：
 
 - `payment/wechat`
 - `payment/alipay`
 
-#### 目录说明
+### 11.1 微信支付
 
-```text
-payment/
-  register.go        # 统一注册入口
-  wechat/            # 微信支付
-  alipay/            # 支付宝支付
-```
-
-#### 微信支付接口约定
-微信支付核心由 `payment/wechat.Handler` 定义：
+业务方实现接口：
 
 ```go
 type Handler interface {
-    BuildPayRequest(c *gin.Context) (*paymentwechat.PayRequest, error)
-    BuildRefundRequest(c *gin.Context) (*paymentwechat.RefundRequest, error)
+    BuildPayRequest(c *gin.Context) (*PayRequest, error)
+    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
     OnPaymentNotify(ctx context.Context, orderID, attach string) error
     OnRefundNotify(ctx context.Context, refundOrderID string) error
 }
 ```
 
-这意味着：
-
-- `wd` 负责和微信支付 SDK 交互
-- 你负责从业务请求里找到订单、校验归属、拼出支付参数
-- 回调到来后，你负责按订单号改业务状态
-
-#### 微信支付接入示例
-下面是一个更贴近商城项目的接入方式：
+初始化：
 
 ```go
-package main
-
-import (
-    "context"
-
-    "github.com/gin-gonic/gin"
-    wd "github.com/loveyu233/wd"
-    "github.com/loveyu233/wd/payment"
-    paymentwechat "github.com/loveyu233/wd/payment/wechat"
+svc, err := paymentwechat.New(
+    paymentwechat.Config{
+        AppID:          "wx-demo",
+        MchID:          "mch-id",
+        MchApiV3Key:    "api-v3-key",
+        NotifyURL:      "https://api.example.com/payment/wechat/notify/payment",
+        SaveHandlerLog: true,
+    },
+    yourWechatPayHandler,
 )
-
-type order struct {
-    OrderNo   string
-    MemberID  int64
-    Title     string
-    AmountFen int64
-    Status    string
-}
-
-type wechatPayHandler struct {
-    orders map[string]*order
-}
-
-func (h *wechatPayHandler) BuildPayRequest(c *gin.Context) (*paymentwechat.PayRequest, error) {
-    var req struct {
-        OrderNo string `json:"order_no" binding:"required"`
-    }
-    if err := c.ShouldBindJSON(&req); err != nil {
-        return nil, err
-    }
-
-    claims, err := wd.ExtractClaimsAs[struct {
-        MemberID int64 `json:"member_id"`
-        OpenID   string `json:"open_id"`
-    }](c)
-    if err != nil {
-        return nil, err
-    }
-
-    orderData := h.orders[req.OrderNo]
-    if orderData == nil {
-        return nil, wd.MsgErrNotFound("订单不存在")
-    }
-    if orderData.MemberID != claims.MemberID {
-        return nil, wd.MsgErrForbiddenAuth("订单不属于当前用户")
-    }
-    if orderData.Status != "WAIT_PAY" {
-        return nil, wd.MsgErrBadRequest("订单当前状态不可支付")
-    }
-
-    return &paymentwechat.PayRequest{
-        Price:       orderData.AmountFen,
-        Description: orderData.Title,
-        OpenID:      claims.OpenID,
-        Attach:      `{"scene":"mall_checkout","order_no":"` + orderData.OrderNo + `"}`,
-        OutTradeNo:  orderData.OrderNo,
-    }, nil
-}
-
-func (h *wechatPayHandler) BuildRefundRequest(c *gin.Context) (*paymentwechat.RefundRequest, error) {
-    return nil, wd.MsgErrBadRequest("示例省略退款")
-}
-
-func (h *wechatPayHandler) OnPaymentNotify(ctx context.Context, orderID, attach string) error {
-    orderData := h.orders[orderID]
-    if orderData == nil {
-        return wd.MsgErrNotFound("订单不存在")
-    }
-    orderData.Status = "PAID"
-    return nil
-}
-
-func (h *wechatPayHandler) OnRefundNotify(ctx context.Context, refundOrderID string) error {
-    return nil
-}
-
-func registerPayment(r *gin.RouterGroup) error {
-    svc, err := paymentwechat.New(paymentwechat.Config{
-        AppID:       "wx-app-id",
-        MchID:       "mch-id",
-        MchApiV3Key: "mch-api-v3-key",
-        NotifyURL:   "https://api.example.com/api/payment/wechat/notify/payment",
-    }, &wechatPayHandler{
-        orders: map[string]*order{},
-    })
-    if err != nil {
-        return err
-    }
-
-    payment.Register(r.Group("/payment/wechat"), svc)
-    return nil
-}
 ```
 
-#### 支付宝支付接入方式
-`payment/alipay` 和微信支付的模式一致，区别主要在配置和通知载荷类型：
+也可以复用已有 SDK：
 
 ```go
-svc, err := paymentalipay.New(paymentalipay.Config{
-    AppID:                "alipay-app-id",
-    AppPrivateKey:        "your-private-key",
-    AESKey:               "your-aes-key",
-    AppPublicKeyFilePath: "./cert/alipay/appPublicKey.crt",
-    AliPublicKeyFilePath: "./cert/alipay/alipayPublicKey_RSA2.crt",
-    AliRootKeyFilePath:   "./cert/alipay/alipayRootCert.crt",
-    NotifyURL:            "https://api.example.com/api/payment/alipay/notify",
-}, handler)
+svc, err := paymentwechat.NewWithClient(paymentClient, yourWechatPayHandler, true)
 ```
 
-支付宝回调里，业务方会拿到的是结构化的 `paymentalipay.PaymentNotify` / `paymentalipay.RefundNotify`，不用再自己做签名验签和表单字段拆解。
+注册路由：
 
-#### 支付模块推荐实践
-
-- `BuildPayRequest` 里务必校验订单归属、订单状态、金额来源，不要相信前端传来的金额
-- `OnPaymentNotify` / `OnRefundNotify` 要做幂等处理，避免第三方重复通知导致重复改状态
-- 回调成功和失败一定要围绕“订单状态是否真正落库成功”决定，而不是只看参数是否解析成功
-- 如果业务方已经自己初始化了第三方支付客户端，可以优先用 `NewWithClient(...)`
-
-### 消息模块 `message/`
-`message/` 负责主动消息、回调消息、订阅消息和短信通知。
-
-当前已经内置四个渠道：
-
-- `message/officialaccount`
-- `message/miniprogram`
-- `message/qywx`
-- `message/sms`
-
-#### 目录说明
-
-```text
-message/
-  register.go              # 统一注册入口
-  officialaccount/         # 微信公众号消息
-  miniprogram/             # 微信小程序订阅消息
-  qywx/                    # 企业微信机器人消息
-  sms/                     # 阿里云短信
+```go
+payment.Register(r.Group("/wechat"), svc)
 ```
 
-#### 公众号消息用法
-公众号消息既有被动回调，也有主动推送。业务方实现 `message/officialaccount.Handler` 即可：
+默认路由：
+
+- `POST /wechat/pay`
+- `POST /wechat/refund`
+- `POST /wechat/notify/payment`
+- `POST /wechat/notify/refund`
+
+除了路由方式，也能直接调用：
+
+- `Pay(ctx, req)`
+- `Refund(ctx, req)`
+- `QueryOrder(ctx, orderID)`
+- `QueryRefundOrder(ctx, orderID)`
+
+### 11.2 支付宝支付
+
+业务方实现：
+
+```go
+type Handler interface {
+    BuildPayRequest(c *gin.Context) (*PayRequest, error)
+    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
+    OnPaymentNotify(ctx context.Context, notice PaymentNotify) error
+    OnRefundNotify(ctx context.Context, notice RefundNotify) error
+}
+```
+
+初始化：
+
+```go
+svc, err := paymentalipay.New(
+    paymentalipay.Config{
+        AppID:                "2021xxxx",
+        AppPrivateKey:        "private-key",
+        AppPublicKeyFilePath: "./appPublicKey.pem",
+        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
+        AliRootKeyFilePath:   "./alipayRootCert.crt",
+        NotifyURL:            "https://api.example.com/payment/alipay/notify",
+        SaveHandlerLog:       true,
+    },
+    yourAlipayHandler,
+)
+```
+
+注册后路由：
+
+- `POST /alipay/pay`
+- `POST /alipay/refund`
+- `POST /alipay/notify`
+
+同时支持直接调用：
+
+- `TradeCreate`
+- `TradeQuery`
+- `TradeRefund`
+- `TradeFastPayRefundQuery`
+
+---
+
+## 12. 消息子包 `message/`
+
+当前内置：
+
+- `message/officialaccount`：微信公众号消息与模板消息
+- `message/miniprogram`：微信小程序订阅消息
+- `message/qywx`：企业微信机器人
+- `message/sms`：阿里云短信
+
+### 12.1 微信公众号 `message/officialaccount`
+
+业务方实现接口：
 
 ```go
 type Handler interface {
@@ -502,180 +966,376 @@ type Handler interface {
 }
 ```
 
-初始化和注册：
+初始化：
 
 ```go
-svc, err := officialaccount.New(officialaccount.Config{
-    AppID:         "wx-official-app-id",
-    AppSecret:     "wx-official-secret",
-    MessageToken:  "server-token",
-    MessageAESKey: "server-aes-key",
-}, handler)
-if err != nil {
-    return err
-}
-
-message.Register(r.Group("/message/officialaccount"), svc)
+svc, err := messageofficial.New(
+    messageofficial.Config{
+        AppID:          "wx-app-id",
+        AppSecret:      "wx-secret",
+        MessageToken:   "token",
+        MessageAESKey:  "aes-key",
+        SaveHandlerLog: true,
+    },
+    yourOfficialHandler,
+)
 ```
 
-这样会注册三类路由：
-
-- `GET /callback`：公众号回调验证
-- `POST /callback`：公众号消息/事件通知
-- `POST /push`：主动推送消息
-
-#### 小程序订阅消息用法
-`message/miniprogram` 不强依赖 gin 路由，更适合在下单成功、发货成功、退款成功这些业务节点里直接调用：
+注册路由：
 
 ```go
-svc, err := miniprogram.New(miniprogram.Config{
-    AppID:  "wx-app-id",
-    Secret: "wx-secret",
-})
-if err != nil {
-    return err
-}
+message.Register(r.Group("/officialaccount"), svc)
+```
 
-_, err = svc.SubscribeMessageSend(ctx, miniprogram.SubscribeContent{
-    ToUserOpenID: "user-open-id",
+默认路由：
+
+- `GET /officialaccount/callback`
+- `POST /officialaccount/callback`
+- `POST /officialaccount/push`
+
+额外能力：
+
+- `Push(ctx, users, message)`：群发文本消息
+- `PushTemplateMessage(ctx, openID, templateID, data)`：发模板消息
+
+### 12.2 微信小程序订阅消息 `message/miniprogram`
+
+```go
+svc, err := messageminiprogram.New(messageminiprogram.Config{
+    AppID:  "wx-app-id",
+    Secret: "secret",
+})
+```
+
+发送：
+
+```go
+_, err = svc.SubscribeMessageSend(ctx, messageminiprogram.SubscribeContent{
+    ToUserOpenID: "openid",
     TemplateID:   "template-id",
-    Page:         "pages/order/detail?id=1001",
-    State:        miniprogram.StateFormal,
+    Page:         "pages/order/detail?id=1",
+    State:        messageminiprogram.StateFormal,
     Data: map[string]map[string]any{
         "thing1": {"value": "订单支付成功"},
-        "amount2": {"value": "199.00"},
+        "time2":  {"value": "2026-04-15 10:00:00"},
     },
 })
 ```
 
-#### 企业微信机器人用法
-企业微信机器人适合发布部署通知、风控告警、运营提醒等场景：
+### 12.3 企业微信机器人 `message/qywx`
 
 ```go
-svc, err := qywx.New(qywx.Config{
-    WebhookKey: "robot-webhook-key",
+svc, err := messageqywx.New(messageqywx.Config{
+    WebhookKey: "your-webhook-key",
 })
-if err != nil {
-    return err
-}
-
-_, err = svc.SendText("发布成功")
-_, err = svc.SendMarkdown("**库存告警**：商品 A 库存不足")
 ```
 
-也可以先上传文件，再发送文件消息：
+直接发送文本：
 
 ```go
-_, err = svc.SendFile("/tmp/report.xlsx", qywx.MediaTypeFile)
+_, err = svc.SendText("服务已恢复")
 ```
 
-#### 短信用法
-短信能力更适合验证码、营销通知、支付成功通知等场景。支持按凭证初始化，也支持复用现有客户端：
+Markdown：
 
 ```go
-svc, err := sms.NewWithAccessKey("access-key-id", "access-key-secret")
+_, err = svc.SendMarkdown("**订单告警**\n> 库存不足")
+```
+
+发送文件：
+
+```go
+_, err = svc.SendFile("./report.xlsx", messageqywx.MediaTypeFile)
+```
+
+也支持：
+
+- `UploadMedia`
+- `UploadMediaFromFile`
+- `SendNews`
+- `NewTextMessage(...).AddMention(...)`
+
+### 12.4 阿里云短信 `message/sms`
+
+```go
+svc, err := messagesms.NewWithAccessKey("access-key-id", "access-key-secret")
 if err != nil {
-    return err
+    panic(err)
 }
 
 err = svc.SendSimpleMsg(
     "13800138000",
-    "短信签名",
+    "签名名称",
     "SMS_123456789",
-    `{"code":"9527"}`,
+    `{"code":"1234"}`,
 )
 ```
 
-#### 消息模块推荐实践
+也支持批量短信：
 
-- 回调型能力（公众号）建议始终通过路由注册方式接入，便于统一日志和中间件
-- 主动消息能力（小程序订阅消息、企业微信机器人、短信）建议在业务层直接注入 service 使用
-- 对外消息通常是副作用操作，推荐在业务层做好失败重试、熔断和日志记录
-- 如果项目里已经统一管理第三方 SDK 客户端，优先使用各模块的 `NewWithClient(...)`
+- `SendBatchSms`
+- `SendSimpleBatchMsg`
 
-### 阶段耗时记录
-如果你想在单个请求内记录某一段业务操作的耗时，可以使用 `BeginStageTiming`：
+---
+
+## 13. Excel 导入导出工具
+
+### 13.1 导出 `excel_export.go`
+
+导出依赖 `excel` tag，格式支持：
+
+- `excel:"order_no"`
+- `excel:"order_no,title:订单号"`
+
+示例：
 
 ```go
-rg.POST("/user/:id", func(c *gin.Context) {
-    stage := wd.BeginStageTiming(c, "修改数据库")
+type OrderRow struct {
+    OrderNo   string    `excel:"order_no,title:订单号"`
+    Username  string    `excel:"username,title:用户名"`
+    Amount    float64   `excel:"amount,title:金额"`
+    CreatedAt time.Time `excel:"created_at,title:创建时间"`
+}
 
-    // 执行数据库更新
-    if err := updateUser(c); err != nil {
-        wd.ResponseError(c, err)
-        return
-    }
+exporter := wd.InitExcelExporter(
+    wd.WithExcelExporterSheetName("订单列表"),
+    wd.WithExcelExporterColumnWidths(map[string]float64{
+        "order_no":   24,
+        "username":   18,
+        "created_at": 22,
+    }),
+)
 
-    stage.Commit()
-    wd.ResponseSuccessMsg(c, "ok")
-})
+err := exporter.ExportToFile(rows, "./orders.xlsx")
 ```
 
-调用 `Commit()` 后，请求日志中会追加类似 `阶段[修改数据库]耗时=12.34ms` 的记录。
+常用方法：
 
-### 请求日志说明
-当前 `MiddlewareLogger` 的行为已经简化，请求日志默认只包含以下基础信息：
+- `ExportToFile`
+- `ExportToBuffer`
+- `ExportToExcelizeFile`
+- `ExportToSheet`
+- `GetStats`
 
-- `method`
-- `url`
-- `ip`
-- `module`
-- `option`
+### 13.2 导入 `excel_mapper.go`
 
-如果你希望在单个请求内追加业务日志，请在处理流程中主动调用：
+同样依赖 `excel` tag，把 Excel 行映射到结构体切片。
 
-- `WriteGinInfoLog`
-- `WriteGinDebugLog`
-- `WriteGinWarnLog`
-- `WriteGinErrLog`
-- `WriteGinInfoAnyLog`
-- `WriteGinDebugAnyLog`
-- `WriteGinWarnAnyLog`
-- `WriteGinErrAnyLog`
+```go
+type UserRow struct {
+    Name     string     `excel:"姓名"`
+    Age      int        `excel:"年龄"`
+    Mobile   *string    `excel:"手机号"`
+    JoinedAt *time.Time `excel:"入职时间"`
+}
 
-其中 `WriteGin*AnyLog` 适合直接记录结构体、切片、map 等任意对象，例如把本次请求的响应结构体直接写入请求日志。
+mapper := wd.InitExcelMapper(
+    wd.WithExcelMapperHeaderRow(1),
+    wd.WithExcelMapperDataStartRow(2),
+    wd.WithExcelMapperStrictMode(false),
+)
 
-如果你配置了 `WithGinRouterLogSaveLog`，持久化回调收到的 `ReqLog` 也只会保留上述基础请求摘要，以及业务主动写入的 `Logs`。中间件不再主动解析请求体、响应体，也不再区分 GET 请求或精简日志模式。
+var users []UserRow
+if err := mapper.MapToStructs("./users.xlsx", &users); err != nil {
+    panic(err)
+}
 
+for _, item := range mapper.GetErrors() {
+    fmt.Println(item.Error())
+}
+```
 
+### 13.3 Excel 坐标工具 `excel_math.go`
 
- ## 目录速览
-      .
-      ├── auth_jwt.go            # JWT 中间件及登录/刷新/退出处理器
-      ├── auth_jwt_options.go     # JWT 中间件函数选项（WithJWT* 系列）
-      ├── gin_engine.go          # Gin Router 构建、公共/私有路由注册与中间件装配
-      ├── http.go                # HTTP Server 启动器、优雅关闭、默认认证中间件挂载
-      ├── middleware_trace_id.go # TraceID 注入
-      ├── middleware_request_time.go # 请求耗时统计
-      ├── middleware_log.go      # 链路日志与请求摘要记录
-      ├── middleware_recovery.go # panic 保护
-      ├── middleware_cors.go     # CORS 配置中间件
-      ├── gorm.go                # GORM 初始化、默认 Logger、全局 DB 实例
-      ├── redis.go               # Redis/RedSync 封装与可配置初始化
-      ├── resty.go               # Resty HTTP 客户端单例
-      ├── response.go            # 统一响应结构及辅助函数
-      ├── request.go             # 请求体解析/绑定工具
-      ├── context.go             # 快捷 Context/超时工具
-      ├── signal.go              # 系统信号 Hook，注册优雅关闭回调
-      ├── random.go              # 随机字符串/数字工具
-      ├── password.go            # 密码生成与校验
-      ├── encrypt.go             # 加解密辅助
-      ├── snowflake.go           # 雪花算法 ID 生成
-      ├── template.go            # 模板渲染/文本处理工具
-      ├── lo.go / str.go / time.go 等 # 常用数据/字符串/时间工具函数
-      ├── excel_export.go        # Excel 导出封装
-      ├── excel_mapper.go        # Excel 字段映射
-      ├── excel_math.go          # Excel 统计计算辅助
-      ├── auth/                  # 认证能力，按渠道拆分为 wechatmini、alipaymini
-      ├── payment/               # 支付能力，按渠道拆分为 wechat、alipay
-      ├── message/               # 消息能力，按渠道拆分为 officialaccount、miniprogram、qywx、sms
-      ├── internal/xclients/     # 第三方客户端共享初始化辅助
-      ├── go.mod / go.sum        # 依赖与版本
-      └── README.md              # 项目说明（本次已更新）
+- `ExcelGetPosition(row, col)`
+- `ExcelGetPositionBatch(...)`
+- `ExcelColumnToIndex("AA")`
+- `ExcelParsePosition("B12")`
+- `ExcelParsePositionUnsafe("B12")`
 
-## 贡献
+适合自己写 Excelize 逻辑时做单元格坐标计算。
 
-欢迎通过 Issue/PR 提交新功能或修复，提交前请确保：
-1. 新增/修改代码已通过 `go test ./...`；
-2. 如引入新特性，请在 README 或相应示例中补充说明；
-3. 遵循现有代码风格（使用 `gofmt`）。
+---
+
+## 14. 文件、HTTP、加密、随机串等常用工具
+
+### 14.1 配置与文件上传 `file.go`
+
+- `InitConfig(path, &cfg)`：读取配置文件到结构体
+- `ReadFileContent(path)`：读取文件内容
+- `GetFileContentType(bytes)`：探测 MIME
+- `GetFileNameType(fileName)`：拿扩展名
+- `UploadFileToTargetURL(...)`：把 `multipart.FileHeader` 转发上传到目标服务
+
+上传示例：
+
+```go
+var resp struct {
+    URL string `json:"url"`
+}
+
+err := wd.UploadFileToTargetURL(
+    wd.WithUploadFileValue(fileHeader),
+    wd.WithUploadFileURL("https://upload.example.com/file"),
+    wd.WithUploadFileToken(token),
+    wd.WithUploadFileResp(&resp),
+)
+```
+
+### 14.2 HTTP 请求工具 `resty.go`
+
+- `RestyClient()`：默认单例客户端
+- `R()`：创建请求
+- `RGet(...)`
+- `RPost(...)`
+
+示例：
+
+```go
+var out struct {
+    Code int `json:"code"`
+}
+err := wd.RPost(
+    map[string]string{"Content-Type": "application/json"},
+    map[string]any{"name": "demo"},
+    "https://api.example.com/create",
+    &out,
+)
+```
+
+### 14.3 加密与密码工具 `encrypt.go`
+
+- `EncryptData(data, customKeyFunc)`：序列化后做 AES-GCM 加密
+- `PasswordEncryption(password)`：bcrypt 哈希
+- `PasswordCompare(password, hashed)`：密码校验
+- `PasswordValidateStrength(password, minLen, maxLen)`：强度校验
+
+### 14.4 随机与 ID 工具 `random.go` / `snowflake.go`
+
+- `GetUUID()`
+- `GetXID()`
+- `InitSnowflakeWorker(workerID)`
+- `GetSnowflakeID()`
+- `RandomString(length)`
+- `RandomStringWithPrefix(...)`
+- `RandomIntRange(left, right)`
+- `RandomExcludeErrorPronCharacters(...)`
+
+### 14.5 金额工具 `decimal.go`
+
+- `DecimalYuanToFen`
+- `DecimalFenToYuan`
+- `DecimalFenToYuanStr`
+- `DecimalAddsSubsGteZero`
+
+### 14.6 字符串与脱敏 `string.go`
+
+- `ValidateChineseMobile`
+- `ValidateChineseIDCard`
+- `MaskMobile`
+- `MaskIDCard`
+- `MaskUsername`
+- `GetGenderFromIDCard`
+- `ReplacePathParamsFast`
+
+### 14.7 模板与差异比较
+
+`template.go`：
+
+- `TemplateReplace(templateText, data)`
+
+`obj_diff.go`：
+
+- `DiffReturnLogs`
+- `DiffReturnSemanticLogs`
+- `DiffText`
+- `DiffReturnHtml`
+- `DiffReturnColorText`
+
+适合“更新前后差异审计”“操作日志语义化输出”之类的场景。
+
+### 14.8 JSON / 集合 / Context 小工具
+
+`gjson.go`：
+
+- `JsonGetValue(jsonStr, key)`
+
+`lo.go`：
+
+- `LoMap`
+- `LoSliceToMap`
+- `LoTernary`
+- `LoWithout`
+- `LoUniq`
+- `LoToPtr`
+- `LoFromPtr`
+
+`context.go`：
+
+- `Context(ttl...)`
+- `DurationSecond(second)`
+
+---
+
+## 15. 其他基础工具索引
+
+下面这些工具不一定需要单独展开成章节，但在实际项目里都很实用：
+
+| 文件 | 主要能力 |
+| --- | --- |
+| `model.go` | 常见 GORM 时间字段结构体片段，如 `StructGormIDDateTime` |
+| `custom_const.go` | 公共常量、上下文 key、tag key |
+| `binding_patch_validator.go` | 让 `Field[T]` 与 Gin `binding` 正常协作 |
+| `other_errors.go` | GORM 常见错误判断，如记录不存在、唯一键冲突 |
+| `signal.go` | 全局优雅关闭钩子 `InsGlobalHook` |
+| `middleware_cors.go` | CORS 中间件 `Cors(...)` |
+| `response.go` | `ReturnAppErr` 等错误转换辅助 |
+| `gen_field.go` | `gorm/gen` 条件表达式辅助 |
+| `internal/xclients/*` | 微信/支付宝 SDK 初始化内部封装 |
+| `internal/xhelper/nil.go` | 处理 interface nil 判断 |
+
+---
+
+## 16. 推荐阅读顺序
+
+如果你第一次接触这个库，建议这样看：
+
+1. 先看“快速接入”了解整体风格；
+2. 再看 `HTTP + JWT + 响应 + GORM`，这是最基础的主干；
+3. 如果你做商城或会员系统，再看 `auth/`、`payment/`、`message/`；
+4. 如果你做后台业务系统，再看 `PATCH`、`ReqRange`、`Excel`、`Redis Lua`；
+5. 最后按需查“通用工具索引”。
+
+## 17. 仓库内示例与测试
+
+仓库里已经有一些非常值得参考的示例：
+
+- `test/projectflow/auth_flow_test.go`：认证模块装配方式
+- `test/projectflow/payment_flow_test.go`：支付模块装配方式
+- `test/projectflow/message_flow_test.go`：消息模块装配方式
+- `test/projectflow/wechatmini_real_flow_test.go`：更接近真实项目的小程序登录 + JWT + 支付流程
+- `test/httpt/h_test.go`：`ReqRange`、`Field[T]`、`PatchUpdate`、`gorm/gen` 的组合用法
+
+如果你不知道某个工具在真实项目中应该如何拼装，优先看这些测试文件。
+
+## 18. 总结
+
+如果把 `wd` 当成一个工具箱来理解，可以把它分成三层：
+
+- 第一层：服务基础设施工具
+  - HTTP、Gin、日志、响应、JWT、GORM、Redis、Cron、Casbin、ES
+- 第二层：业务通用模型工具
+  - PATCH、分页、范围查询、时间类型、Excel、文件上传
+- 第三层：业务场景工具包
+  - 微信/支付宝登录、微信/支付宝支付、公众号/小程序/企业微信/短信消息
+
+所以最合适的使用方式不是“只引一个函数”，而是把它作为项目的统一工具层：
+
+- 服务入口统一走 `InitHTTPServerAndStart`
+- 认证统一走 `NewGinJWTMiddleware`
+- 响应统一走 `ResponseSuccess` / `ResponseError`
+- 数据访问统一走 `InitGormDB` + `InsDB.Gen`
+- 缓存与分布式能力统一走 `InitRedis`
+- 三方业务接入统一走 `auth/`、`payment/`、`message/`
+
+这样项目的接入风格会更统一，后续维护成本也会低很多。
