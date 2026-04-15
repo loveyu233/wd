@@ -42,6 +42,15 @@
 | 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
 | 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、Diff 等 | 各文件导出函数 |
 
+## 专题文档
+
+如果你是按业务能力来接入，而不是按源码文件来查，建议直接看拆分后的专题文档：
+
+- `docs/README.md`：文档导航
+- `docs/auth.md`：微信/支付宝小程序登录接入
+- `docs/payment.md`：微信支付 / 支付宝支付接入
+- `docs/message.md`：公众号、小程序订阅消息、企业微信机器人、短信接入
+
 ## 安装
 
 ```bash
@@ -1276,6 +1285,95 @@ err := wd.RPost(
 - `DurationSecond(second)`
 
 ---
+
+
+## 附录：按文件查 API
+
+如果你已经知道自己要找哪个文件，这里可以直接反查主要导出入口。这个附录不追求把每个导出符号全部列完，而是优先列“真正会被业务项目直接调用”的 API。
+
+### 服务主干
+
+| 文件 | 主要 API |
+| --- | --- |
+| `gin_engine.go` | `PublicRoutes.Append`、`PrivateRoutes.Append`、`WithGinRouterPrefix`、`WithGinRouterAuthHandler`、`WithGinRouterGlobalMiddleware`、`WithGinRouterModel` |
+| `http_server.go` | `InitHTTPServerAndStart`、`NewHTTPServer`、`(*HTTPServer).Start`、`StartAsync`、`Wait` |
+| `middleware_log.go` | `MiddlewareLogger`、`BeginStageTiming`、`WriteGinInfoLog`、`WriteGinWarnLog`、`WriteGinErrAnyLog`、`GinLogSetModuleName`、`GinLogSetOptionName` |
+| `middleware_trace_id.go` | `MiddlewareTraceID`、`GetTraceID` |
+| `middleware_request_time.go` | `MiddlewareRequestTime` |
+| `middleware_recovery.go` | `MiddlewareRecovery` |
+| `middleware_cors.go` | `Cors` |
+
+### 认证与响应
+
+| 文件 | 主要 API |
+| --- | --- |
+| `auth_jwt.go` | `NewGinJWTMiddleware`、`(*GinJWTMiddleware).MiddlewareFunc`、`LoginHandler`、`RefreshHandler`、`TokenGenerator`、`ParseTokenString`、`ExtractClaimsAs`、`GetIdentityAs`、`GetToken` |
+| `auth_jwt_options.go` | `WithJWTRealm`、`WithJWTKey`、`WithJWTTimeout`、`WithJWTMaxRefresh`、`WithJWTIdentityKey`、`WithJWTTokenLookup`、`WithJWTCookie`、`WithJWTRSA` |
+| `response.go` | `ResponseSuccess`、`ResponseSuccessMsg`、`ResponseSuccessToken`、`ResponseSuccessEncryptData`、`ResponseError`、`ResponseParamError`、`ConvertToAppError`、各类 `MsgErr*` |
+| `params_verify.go` | `TranslateError`、`CreateRequiredError`、`CreateTypeError` |
+| `gin_param.go` | `GinQueryDefault`、`GinQueryRequired`、`GinPathRequired` |
+
+### PATCH、查询参数与文件表单
+
+| 文件 | 主要 API |
+| --- | --- |
+| `patch_field.go` | `Field[T]`、`(Field[T]).IsSet`、`HasValue` |
+| `patch_field_assign.go` | `PatchUpdateSimple`、`PatchUpdate` |
+| `params_precompiled.go` | `ReqRange[T]`、`ReqKeyword`、`ReqPageSize`、`ReqFile`、`ReqFiles`、`ApplyPage`、`FilesUploadGoroutine` |
+| `binding_patch_validator.go` | Gin `binding` 与 `Field[T]` 协作支持（通常无需手动调用） |
+
+### 数据库、缓存、搜索与调度
+
+| 文件 | 主要 API |
+| --- | --- |
+| `gorm.go` | `InitGormDB`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
+| `gen.go` | `(*GormClient).Gen`、`WithGenOutFilePath`、`WithGenUseTablesName`、`WithGenTableColumnType`、`WithGenGlobalColumnTypeAddDatatypes` |
+| `gen_field.go` | `GenJSONArrayQuery`、`GenJSONArrayQueryContainsValue`、`GenCustomTimeBetween`、`GenNewBetween` |
+| `redis.go` | `InitRedis`、`(*RedisConfig).NewLock`、`SetCaptcha`、`GetCaptcha`、`DelCaptcha`、`FindAllBitMapByTargetValue`、`WithRedis*` |
+| `redis_lua.go` | `LuaRedisRateLimit`、`LuaRedisDecrStock`、`LuaRedisIncrWithLimit`、`LuaRedisLeaderboardIncr`、`LuaRedisDistributedLock`、`LuaRedisBloomAdd`、`LuaRedisID` |
+| `cron_task.go` | `InitCronJob`、`RunJobEveryDuration`、`RunJobCrontab`、`RunJobEveryDurationTheOne`、`Start`、`Stop` |
+| `casbin.go` | `InitCasbin`、`(*CachedEnforcer).InitCasbinRule`、`CustomGinMiddleware`、`CustomAddPoliciesEx`、`CustomAddRolesForUser` |
+| `es.go` | `InitEs`、`CustomBulkInsertData`、`CustomBulkClose`、`CustomBulkStats` |
+
+### 时间、Excel 与通用工具
+
+| 文件 | 主要 API |
+| --- | --- |
+| `sql_type.go` | `DateTime`、`DateOnly`、`TimeOnly`、`TimeHM` |
+| `time.go` | `Now`、`NowAsDateTime`、`ParseDateTimeValue`、`NewDateOnlyString`、`TodayRange`、`CurrentMonthRange`、`HasTimeConflict` |
+| `excel_export.go` | `InitExcelExporter`、`ExportToFile`、`ExportToBuffer`、`ExportToExcelizeFile`、`GetStats` |
+| `excel_mapper.go` | `InitExcelMapper`、`MapToStructs`、`GetErrors`、`ClearErrors` |
+| `excel_math.go` | `ExcelGetPosition`、`ExcelGetPositionBatch`、`ExcelColumnToIndex`、`ExcelParsePosition` |
+| `file.go` | `InitConfig`、`ReadFileContent`、`GetFileContentType`、`GetFileNameType`、`UploadFileToTargetURL` |
+| `resty.go` | `RestyClient`、`R`、`RPost`、`RGet` |
+| `encrypt.go` | `EncryptData`、`PasswordEncryption`、`PasswordCompare`、`PasswordValidateStrength` |
+| `random.go` | `GetUUID`、`GetXID`、`InitSnowflakeWorker`、`GetSnowflakeID`、`RandomString`、`RandomIntRange` |
+| `decimal.go` | `DecimalYuanToFen`、`DecimalFenToYuan`、`DecimalFenToYuanStr` |
+| `string.go` | `ValidateChineseMobile`、`ValidateChineseIDCard`、`MaskMobile`、`MaskIDCard`、`MaskUsername` |
+| `obj_diff.go` | `DiffReturnLogs`、`DiffReturnSemanticLogs`、`DiffText`、`DiffReturnHtml` |
+| `template.go` | `TemplateReplace` |
+| `lo.go` | `LoMap`、`LoSliceToMap`、`LoTernary`、`LoUniq`、`LoToPtr`、`LoFromPtr` |
+| `gjson.go` | `JsonGetValue` |
+| `context.go` | `Context`、`DurationSecond` |
+| `signal.go` | `InsGlobalHook`、`(*SignalHook).AppendFun`、`Trigger`、`Wait` |
+
+### 业务子包入口
+
+| 文件/包 | 主要 API |
+| --- | --- |
+| `auth/register.go` | `auth.Register` |
+| `auth/types.go` | `auth.Identity`、`auth.UserHandler` |
+| `auth/wechatmini` | `New`、`NewWithClient`、`RegisterRoutes`、`CreateQRCode`、`GetCode`、`GetUnlimitedCode` |
+| `auth/alipaymini` | `New`、`NewWithClient`、`RegisterRoutes` |
+| `payment/register.go` | `payment.Register` |
+| `payment/wechat` | `New`、`NewWithClient`、`RegisterRoutes`、`Pay`、`Refund`、`QueryOrder`、`QueryRefundOrder` |
+| `payment/alipay` | `New`、`NewWithClient`、`RegisterRoutes`、`TradeCreate`、`TradeQuery`、`TradeRefund`、`TradeFastPayRefundQuery` |
+| `message/register.go` | `message.Register` |
+| `message/officialaccount` | `New`、`NewWithClient`、`RegisterRoutes`、`Push`、`PushTemplateMessage` |
+| `message/miniprogram` | `New`、`NewWithClient`、`SubscribeMessageSend` |
+| `message/qywx` | `New`、`SendText`、`SendMarkdown`、`SendFile`、`SendNews`、`UploadMedia` |
+| `message/sms` | `New`、`NewWithAccessKey`、`NewWithClient`、`SendMsg`、`SendSimpleMsg`、`SendBatchSms` |
+
 
 ## 15. 其他基础工具索引
 
