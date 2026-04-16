@@ -7,7 +7,7 @@
 - 统一响应、参数校验、PATCH 三态字段
 - GORM 初始化、SQL 日志增强、gorm/gen 代码生成辅助
 - Redis 初始化、Lua 工具脚本、分布式锁、限流、排行榜、库存等场景能力
-- 微信/支付宝登录、支付、消息等业务型工具包
+- 阿里云短信发送能力
 - Excel 导入导出
 - 时间类型、文件上传、加密、模板、脱敏、随机串等通用工具
 
@@ -20,7 +20,7 @@
 - 使用 `gin` 做 HTTP 接口层
 - 使用 `gorm` / `gorm/gen` 做数据库访问
 - 需要统一错误码、日志、TraceID、响应结构
-- 需要小程序登录、支付、消息、短信等业务接入
+- 需要短信发送等轻量业务能力接入
 - 需要大量“工具层代码”但不想每个项目都重复造轮子
 
 ## 模块地图
@@ -35,9 +35,7 @@
 | GORM 工具 | `gorm.go` `gen.go` `gen_field.go` | 初始化 DB、增强 SQL 日志、gorm/gen 代码生成 | `InitGormDB` `InsDB.Gen` |
 | Redis 工具 | `redis.go` `redis_lua.go` | 初始化 Redis、分布式锁、限流、排行榜、库存、Bloom、ID 生成 | `InitRedis` |
 | 定时/权限/搜索 | `cron_task.go` `casbin.go` `es.go` | 分布式定时任务、RBAC、Elasticsearch 批量写入 | `InitCronJob` `InitCasbin` `InitEs` |
-| 认证子包 | `auth/` | 微信/支付宝小程序登录接入 | `auth.Register` |
-| 支付子包 | `payment/` | 微信支付、支付宝支付、回调封装 | `payment.Register` |
-| 消息子包 | `message/` | 公众号、小程序、企业微信机器人、阿里云短信 | `message.Register` 或直接 `New` |
+| 短信服务 | `sms.go` | 阿里云短信发送能力 | `NewSMS` `NewSMSWithAccessKey` `NewSMSWithClient` |
 | Excel 工具 | `excel_export.go` `excel_mapper.go` `excel_math.go` | Excel 导出、导入、坐标换算 | `InitExcelExporter` `InitExcelMapper` |
 | 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
 | 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、Diff 等 | 各文件导出函数 |
@@ -47,9 +45,7 @@
 如果你是按业务能力来接入，而不是按源码文件来查，建议直接看拆分后的专题文档：
 
 - `docs/README.md`：文档导航
-- `docs/auth.md`：微信/支付宝小程序登录接入
-- `docs/payment.md`：微信支付 / 支付宝支付接入
-- `docs/message.md`：公众号、小程序订阅消息、企业微信机器人、短信接入
+- `docs/message.md`：阿里云短信接入
 
 ## 目录导航
 
@@ -65,16 +61,14 @@
 - [7. 时间类型与时间工具](#7-时间类型与时间工具)
 - [8. Redis 初始化、分布式锁与 Lua 工具集](#8-redis-初始化分布式锁与-lua-工具集)
 - [9. 定时任务、Casbin 权限与 Elasticsearch](#9-定时任务casbin-权限与-elasticsearch)
-- [10. 认证子包 `auth/`](#10-认证子包-auth)
-- [11. 支付子包 `payment/`](#11-支付子包-payment)
-- [12. 消息子包 `message/`](#12-消息子包-message)
-- [13. Excel 导入导出工具](#13-excel-导入导出工具)
-- [14. 文件、HTTP、加密、随机串等常用工具](#14-文件http加密随机串等常用工具)
+- [10. 短信服务 `sms.go`](#10-短信服务-smsgo)
+- [11. Excel 导入导出工具](#11-excel-导入导出工具)
+- [12. 文件、HTTP、加密、随机串等常用工具](#12-文件http加密随机串等常用工具)
 - [附录：按文件查 API](#附录按文件查-api)
-- [15. 其他基础工具索引](#15-其他基础工具索引)
-- [16. 推荐阅读顺序](#16-推荐阅读顺序)
-- [17. 仓库内示例与测试](#17-仓库内示例与测试)
-- [18. 总结](#18-总结)
+- [13. 其他基础工具索引](#13-其他基础工具索引)
+- [14. 推荐阅读顺序](#14-推荐阅读顺序)
+- [15. 仓库内示例与测试](#15-仓库内示例与测试)
+- [16. 总结](#16-总结)
 
 ## 安装
 
@@ -220,7 +214,7 @@ func main() {
 ```go
 wd.PublicRoutes.Append(func(rg *gin.RouterGroup) {
     rg.POST("/login", authMW.LoginHandler())
-    rg.POST("/payment/callback", callbackHandler)
+    rg.POST("/callback", callbackHandler)
 })
 
 wd.PrivateRoutes.Append(func(rg *gin.RouterGroup) {
@@ -310,7 +304,7 @@ wd.ResponseSuccess(c, order)
 
 ### 3.4 第三方登录后手动签发 token
 
-这个模式在 `auth/wechatmini` 里很常见：
+这个模式在第三方登录或外部认证成功后手动发 token 的场景里很常见：
 
 ```go
 jwtMW, _ := wd.NewGinJWTMiddleware(
@@ -894,328 +888,65 @@ _ = wd.InsEs.CustomBulkClose()
 
 ---
 
-## 10. 认证子包 `auth/`
+## 10. 短信服务 `sms.go`
 
-### 10.1 这个子包解决什么问题
+当前仓库里保留的业务能力只剩短信服务，对外统一通过根目录下的 `sms.go` 提供：
 
-`auth/` 不是通用 JWT，而是“第三方身份 -> 业务用户 -> 业务 token”这一层封装。
+- `wd.NewSMS`
+- `wd.NewSMSWithAccessKey`
+- `wd.NewSMSWithClient`
 
-当前内置：
+### 10.1 初始化
 
-- `auth/wechatmini`
-
-### 10.2 业务方需要实现什么
-
-核心接口是 `auth.UserHandler`：
+通过凭证配置初始化：
 
 ```go
-type UserHandler interface {
-    FindUser(ctx context.Context, identity auth.Identity) (user any, exists bool, err error)
-    CreateUser(ctx context.Context, identity auth.Identity) (user any, err error)
-    GenerateToken(ctx context.Context, user any, identity auth.Identity, sessionValue string) (data any, err error)
-}
-```
-
-你只需要关心：
-
-- 根据第三方身份查业务用户
-- 没有用户时自动创建
-- 最后生成你自己的 token 或响应体
-
-### 10.3 微信小程序登录
-
-初始化：
-
-```go
-svc, err := authwechatmini.New(
-    authwechatmini.Config{
-        AppID:          "wx-demo",
-        Secret:         "secret",
-        SaveHandlerLog: true,
-    },
-    yourUserHandler,
-)
-```
-
-或者直接复用已有 SDK：
-
-```go
-svc, err := authwechatmini.NewWithClient(miniClient, yourUserHandler, true)
-```
-
-注册路由：
-
-```go
-auth.Register(r.Group("/wechatmini"), svc)
-```
-
-会注册：
-
-- `POST /wechatmini/login`
-
-除了登录，还支持：
-
-- `CreateQRCode`
-- `GetCode`
-- `GetUnlimitedCode`
-
-### 10.4 推荐接入方式
-
-认证模块最推荐的模式是：
-
-- 第三方登录模块负责拿到 `UnionID/OpenID/手机号`
-- 业务项目负责落库和绑定会员
-- token 统一用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)` 生成
-
-这样业务边界最清晰。
-
----
-
-## 11. 支付子包 `payment/`
-
-当前内置：
-
-- `payment/wechat`
-
-### 11.1 设计目标
-
-支付子包现在更偏工具库设计：
-
-- 直接暴露 `Pay / Refund / QueryOrder / QueryRefundOrder`
-- 注册路由时直接接收标准请求体
-- 只有异步回调才需要业务方实现 `Handler`
-
-`Handler` 现在只负责通知处理：
-
-```go
-type Handler interface {
-    OnPaymentNotify(ctx context.Context, notice PaymentNotify) error
-    OnRefundNotify(ctx context.Context, notice RefundNotify) error
-}
-```
-
-### 11.2 微信支付
-
-初始化：
-
-```go
-svc, err := paymentwechat.New(
-    paymentwechat.Config{
-        AppID:          "wx-demo",
-        MchID:          "mch-id",
-        MchApiV3Key:    "api-v3-key",
-        NotifyURL:      "https://api.example.com/payment/wechat/notify/payment",
-        SaveHandlerLog: true,
-    },
-    yourWechatPayHandler, // 不需要回调时可传 nil
-)
-```
-
-也可以复用已有 SDK：
-
-```go
-svc, err := paymentwechat.NewWithClient(paymentClient, yourWechatPayHandler, true)
-```
-
-注册路由：
-
-```go
-payment.Register(r.Group("/wechat"), svc)
-```
-
-默认路由：
-
-- `POST /wechat/pay`
-- `POST /wechat/refund`
-
-如果初始化时传了 `Handler`，还会注册：
-
-- `POST /wechat/notify/payment`
-- `POST /wechat/notify/refund`
-
-### 11.3 金额模型
-
-金额统一使用元为单位的 `decimal.Decimal`：
-
-```go
-type PayRequest struct {
-    Amount      decimal.Decimal `json:"amount"`
-    Description string          `json:"description"`
-    OpenID      string          `json:"openid"`
-    Attach      string          `json:"attach"`
-    NotifyURL   string          `json:"notify_url,omitempty"`
-    OutTradeNo  string          `json:"out_trade_no"`
-}
-
-type RefundRequest struct {
-    OrderID      string          `json:"order_id,omitempty"`
-    TotalAmount  decimal.Decimal `json:"total_amount,omitempty"`
-    RefundAmount decimal.Decimal `json:"refund_amount,omitempty"`
-    RefundDesc   string          `json:"refund_desc,omitempty"`
-    NotifyURL    string          `json:"notify_url,omitempty"`
-}
-```
-
-工具库内部会自动把元转换成微信要求的分，并校验最多 2 位小数。
-
-### 11.4 直接调用示例
-
-```go
-resp, err := svc.Pay(ctx, &paymentwechat.PayRequest{
-    Amount:      decimal.RequireFromString("199.00"),
-    Description: "年度会员",
-    OpenID:      "openid-1001",
-    OutTradeNo:  "order-20260410-0001",
+svc, err := wd.NewSMS(wd.SMSConfig{
+    CredentialConfig: new(credential.Config).
+        SetType("access_key").
+        SetAccessKeyId("access-key-id").
+        SetAccessKeySecret("access-key-secret"),
 })
 ```
 
-退款：
+直接通过 AccessKey 初始化：
 
 ```go
-resp, err := svc.Refund(ctx, &paymentwechat.RefundRequest{
-    OrderID:      "order-20260410-0001",
-    TotalAmount:  decimal.RequireFromString("199.00"),
-    RefundAmount: decimal.RequireFromString("199.00"),
-    RefundDesc:   "用户申请退款",
-})
+svc, err := wd.NewSMSWithAccessKey("access-key-id", "access-key-secret")
 ```
 
----
-
-## 12. 消息子包 `message/`
-
-当前内置：
-
-- `message/officialaccount`：微信公众号消息与模板消息
-- `message/miniprogram`：微信小程序订阅消息
-- `message/qywx`：企业微信机器人
-- `message/sms`：阿里云短信
-
-### 12.1 微信公众号 `message/officialaccount`
-
-业务方实现接口：
+复用现有客户端：
 
 ```go
-type Handler interface {
-    OnSubscribe(ctx context.Context, user *userresponse.ResponseGetUserInfo, event contract.EventInterface) error
-    OnUnsubscribe(ctx context.Context, user *userresponse.ResponseGetUserInfo, event contract.EventInterface) error
-    BuildPushRequest(c *gin.Context) (toUsers []string, message string, err error)
-}
+svc, err := wd.NewSMSWithClient(dysmsClient)
 ```
 
-初始化：
+### 10.2 发送短信
+
+发送单条短信：
 
 ```go
-svc, err := messageofficial.New(
-    messageofficial.Config{
-        AppID:          "wx-app-id",
-        AppSecret:      "wx-secret",
-        MessageToken:   "token",
-        MessageAESKey:  "aes-key",
-        SaveHandlerLog: true,
-    },
-    yourOfficialHandler,
-)
-```
-
-注册路由：
-
-```go
-message.Register(r.Group("/officialaccount"), svc)
-```
-
-默认路由：
-
-- `GET /officialaccount/callback`
-- `POST /officialaccount/callback`
-- `POST /officialaccount/push`
-
-额外能力：
-
-- `Push(ctx, users, message)`：群发文本消息
-- `PushTemplateMessage(ctx, openID, templateID, data)`：发模板消息
-
-### 12.2 微信小程序订阅消息 `message/miniprogram`
-
-```go
-svc, err := messageminiprogram.New(messageminiprogram.Config{
-    AppID:  "wx-app-id",
-    Secret: "secret",
-})
-```
-
-发送：
-
-```go
-_, err = svc.SubscribeMessageSend(ctx, messageminiprogram.SubscribeContent{
-    ToUserOpenID: "openid",
-    TemplateID:   "template-id",
-    Page:         "pages/order/detail?id=1",
-    State:        messageminiprogram.StateFormal,
-    Data: map[string]map[string]any{
-        "thing1": {"value": "订单支付成功"},
-        "time2":  {"value": "2026-04-15 10:00:00"},
-    },
-})
-```
-
-### 12.3 企业微信机器人 `message/qywx`
-
-```go
-svc, err := messageqywx.New(messageqywx.Config{
-    WebhookKey: "your-webhook-key",
-})
-```
-
-直接发送文本：
-
-```go
-_, err = svc.SendText("服务已恢复")
-```
-
-Markdown：
-
-```go
-_, err = svc.SendMarkdown("**订单告警**\n> 库存不足")
-```
-
-发送文件：
-
-```go
-_, err = svc.SendFile("./report.xlsx", messageqywx.MediaTypeFile)
-```
-
-也支持：
-
-- `UploadMedia`
-- `UploadMediaFromFile`
-- `SendNews`
-- `NewTextMessage(...).AddMention(...)`
-
-### 12.4 阿里云短信 `message/sms`
-
-```go
-svc, err := messagesms.NewWithAccessKey("access-key-id", "access-key-secret")
-if err != nil {
-    panic(err)
-}
-
-err = svc.SendSimpleMsg(
+err := svc.SendSimpleMsg(
     "13800138000",
-    "签名名称",
+    "测试签名",
     "SMS_123456789",
-    `{"code":"1234"}`,
+    `{"code":"9527"}`,
 )
 ```
 
-也支持批量短信：
+发送批量短信：
 
-- `SendBatchSms`
-- `SendSimpleBatchMsg`
+```go
+err := svc.SendSimpleBatchMsg(
+    `["13800138000","13900139000"]`,
+    `["测试签名","测试签名"]`,
+    "SMS_123456789",
+    `[{"code":"9527"},{"code":"9528"}]`,
+)
+```
 
----
+## 11. Excel 导入导出工具
 
-## 13. Excel 导入导出工具
 
 ### 13.1 导出 `excel_export.go`
 
@@ -1485,20 +1216,11 @@ err := wd.RPost(
 | `context.go` | `Context`、`DurationSecond` |
 | `signal.go` | `InsGlobalHook`、`(*SignalHook).AppendFun`、`Trigger`、`Wait` |
 
-### 业务子包入口
+### 业务能力入口
 
 | 文件/包 | 主要 API |
 | --- | --- |
-| `auth/register.go` | `auth.Register` |
-| `auth/types.go` | `auth.Identity`、`auth.UserHandler` |
-| `auth/wechatmini` | `New`、`NewWithClient`、`RegisterRoutes`、`CreateQRCode`、`GetCode`、`GetUnlimitedCode` |
-| `payment/register.go` | `payment.Register` |
-| `payment/wechat` | `New`、`NewWithClient`、`RegisterRoutes`、`Pay`、`Refund`、`QueryOrder`、`QueryRefundOrder` |
-| `message/register.go` | `message.Register` |
-| `message/officialaccount` | `New`、`NewWithClient`、`RegisterRoutes`、`Push`、`PushTemplateMessage` |
-| `message/miniprogram` | `New`、`NewWithClient`、`SubscribeMessageSend` |
-| `message/qywx` | `New`、`SendText`、`SendMarkdown`、`SendFile`、`SendNews`、`UploadMedia` |
-| `message/sms` | `New`、`NewWithAccessKey`、`NewWithClient`、`SendMsg`、`SendSimpleMsg`、`SendBatchSms` |
+| `sms.go` | `NewSMS`、`NewSMSWithAccessKey`、`NewSMSWithClient`、`SendMsg`、`SendSimpleMsg`、`SendBatchSms` |
 
 
 ## 15. 其他基础工具索引
@@ -1526,7 +1248,7 @@ err := wd.RPost(
 
 1. 先看“快速接入”了解整体风格；
 2. 再看 `HTTP + JWT + 响应 + GORM`，这是最基础的主干；
-3. 如果你做商城或会员系统，再看 `auth/`、`payment/`、`message/`；
+3. 如果你需要短信能力，再看 `sms.go` 与 `docs/message.md`；
 4. 如果你做后台业务系统，再看 `PATCH`、`ReqRange`、`Excel`、`Redis Lua`；
 5. 最后按需查“通用工具索引”。
 
@@ -1534,10 +1256,7 @@ err := wd.RPost(
 
 仓库里已经有一些非常值得参考的示例：
 
-- `test/projectflow/auth_flow_test.go`：认证模块装配方式
-- `test/projectflow/payment_flow_test.go`：支付模块装配方式
-- `test/projectflow/message_flow_test.go`：消息模块装配方式
-- `test/projectflow/wechatmini_real_flow_test.go`：更接近真实项目的小程序登录 + JWT + 支付流程
+- `test/projectflow/message_flow_test.go`：短信模块装配方式
 - `test/httpt/h_test.go`：`ReqRange`、`Field[T]`、`PatchUpdate`、`gorm/gen` 的组合用法
 
 如果你不知道某个工具在真实项目中应该如何拼装，优先看这些测试文件。
@@ -1551,7 +1270,7 @@ err := wd.RPost(
 - 第二层：业务通用模型工具
   - PATCH、分页、范围查询、时间类型、Excel、文件上传
 - 第三层：业务场景工具包
-  - 微信/支付宝登录、微信/支付宝支付、公众号/小程序/企业微信/短信消息
+  - 阿里云短信发送
 
 所以最合适的使用方式不是“只引一个函数”，而是把它作为项目的统一工具层：
 
@@ -1560,6 +1279,6 @@ err := wd.RPost(
 - 响应统一走 `ResponseSuccess` / `ResponseError`
 - 数据访问统一走 `InitGormDB` + `InsDB.Gen`
 - 缓存与分布式能力统一走 `InitRedis`
-- 三方业务接入统一走 `auth/`、`payment/`、`message/`
+- 短信能力统一走 `sms.go`
 
 这样项目的接入风格会更统一，后续维护成本也会低很多。

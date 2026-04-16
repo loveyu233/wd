@@ -1,4 +1,4 @@
-package sms
+package wd
 
 import (
 	"errors"
@@ -10,15 +10,21 @@ import (
 	credential "github.com/aliyun/credentials-go/credentials"
 )
 
-const defaultEndpoint = "dysmsapi.aliyuncs.com"
+const smsDefaultEndpoint = "dysmsapi.aliyuncs.com"
 
-// Service 聚合阿里云短信发送能力。
-type Service struct {
+// SMSConfig 用来描述阿里云短信服务的配置。
+type SMSConfig struct {
+	CredentialConfig *credential.Config
+	Endpoint         string
+}
+
+// SMSService 聚合阿里云短信发送能力。
+type SMSService struct {
 	client *dysmsapi20170525.Client
 }
 
-// New 用来根据凭证配置初始化短信服务。
-func New(config Config) (*Service, error) {
+// NewSMS 用来根据凭证配置初始化短信服务。
+func NewSMS(config SMSConfig) (*SMSService, error) {
 	if config.CredentialConfig == nil {
 		return nil, errors.New("短信凭证配置不能为空")
 	}
@@ -28,30 +34,35 @@ func New(config Config) (*Service, error) {
 	}
 	endpoint := config.Endpoint
 	if endpoint == "" {
-		endpoint = defaultEndpoint
+		endpoint = smsDefaultEndpoint
 	}
 	client, err := dysmsapi20170525.NewClient(&openapi.Config{Credential: newCredential, Endpoint: tea.String(endpoint)})
 	if err != nil {
 		return nil, err
 	}
-	return &Service{client: client}, nil
+	return &SMSService{client: client}, nil
 }
 
-// NewWithAccessKey 用来通过 access key 初始化短信服务。
-func NewWithAccessKey(accessKeyID, accessKeySecret string) (*Service, error) {
-	return New(Config{CredentialConfig: new(credential.Config).SetType("access_key").SetAccessKeyId(accessKeyID).SetAccessKeySecret(accessKeySecret)})
+// NewSMSWithAccessKey 用来通过 access key 初始化短信服务。
+func NewSMSWithAccessKey(accessKeyID, accessKeySecret string) (*SMSService, error) {
+	return NewSMS(SMSConfig{CredentialConfig: new(credential.Config).SetType("access_key").SetAccessKeyId(accessKeyID).SetAccessKeySecret(accessKeySecret)})
 }
 
-// NewWithClient 用来复用外部传入的短信客户端。
-func NewWithClient(client *dysmsapi20170525.Client) (*Service, error) {
+// NewSMSWithClient 用来复用外部传入的短信客户端。
+func NewSMSWithClient(client *dysmsapi20170525.Client) (*SMSService, error) {
 	if client == nil {
 		return nil, errors.New("短信客户端不能为空")
 	}
-	return &Service{client: client}, nil
+	return &SMSService{client: client}, nil
+}
+
+// Client 用来返回底层短信客户端。
+func (s *SMSService) Client() *dysmsapi20170525.Client {
+	return s.client
 }
 
 // SendMsg 用来发送单条短信。
-func (s *Service) SendMsg(req *dysmsapi20170525.SendSmsRequest) error {
+func (s *SMSService) SendMsg(req *dysmsapi20170525.SendSmsRequest) error {
 	if s.client == nil {
 		return errors.New("短信客户端未初始化")
 	}
@@ -69,7 +80,7 @@ func (s *Service) SendMsg(req *dysmsapi20170525.SendSmsRequest) error {
 }
 
 // SendSimpleMsg 用来发送简化版单条短信。
-func (s *Service) SendSimpleMsg(targetPhoneNumber, signName, templateCode, templateParam string) error {
+func (s *SMSService) SendSimpleMsg(targetPhoneNumber, signName, templateCode, templateParam string) error {
 	return s.SendMsg(&dysmsapi20170525.SendSmsRequest{
 		PhoneNumbers:  tea.String(targetPhoneNumber),
 		SignName:      tea.String(signName),
@@ -79,7 +90,7 @@ func (s *Service) SendSimpleMsg(targetPhoneNumber, signName, templateCode, templ
 }
 
 // SendBatchSms 用来批量发送短信。
-func (s *Service) SendBatchSms(req *dysmsapi20170525.SendBatchSmsRequest) error {
+func (s *SMSService) SendBatchSms(req *dysmsapi20170525.SendBatchSmsRequest) error {
 	if s.client == nil {
 		return errors.New("短信客户端未初始化")
 	}
@@ -97,7 +108,7 @@ func (s *Service) SendBatchSms(req *dysmsapi20170525.SendBatchSmsRequest) error 
 }
 
 // SendSimpleBatchMsg 用来发送简化版批量短信。
-func (s *Service) SendSimpleBatchMsg(targetPhoneNumbers, signNames, templateCode, templateParams string) error {
+func (s *SMSService) SendSimpleBatchMsg(targetPhoneNumbers, signNames, templateCode, templateParams string) error {
 	return s.SendBatchSms(&dysmsapi20170525.SendBatchSmsRequest{
 		PhoneNumberJson:   tea.String(targetPhoneNumbers),
 		SignNameJson:      tea.String(signNames),

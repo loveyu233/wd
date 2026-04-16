@@ -49,8 +49,6 @@ func NewAppError(code int, message string, e error) *AppError {
 var (
 	// 100xxx 请求外部服务失败
 	errRequestExternalService = NewAppError(100000, "服务请求失败，请稍后重试", nil)
-	errRequestWechat          = NewAppError(100001, "微信服务请求失败", nil)
-	errRequestWechatPay       = NewAppError(100002, "微信支付请求失败", nil)
 
 	// 400xxx 客户端错误
 	errBadRequest         = NewAppError(400000, "请求错误", nil)
@@ -89,10 +87,6 @@ func RespCodeDescMap() map[int]string {
 	return map[int]string{
 		200:    "请求成功",
 		100000: "服务请求失败，请稍后重试",
-		100001: "微信服务请求失败",
-		100002: "微信支付请求失败",
-		100003: "支付宝服务请求失败",
-		100004: "支付宝支付请求失败",
 		400000: "请求错误",
 		400001: "请求参数错误",
 		400002: "登陆凭证无效",
@@ -117,18 +111,6 @@ func MsgErrRequestExternalService(msg string, errs ...error) *AppError {
 		msg = errRequestExternalService.Message
 	}
 	return errRequestExternalService.WithMessage(msg, errs...)
-}
-func MsgErrRequestWechat(msg string, errs ...error) *AppError {
-	if msg == "" {
-		msg = errRequestWechat.Message
-	}
-	return errRequestWechat.WithMessage(msg, errs...)
-}
-func MsgErrRequestWechatPay(msg string, errs ...error) *AppError {
-	if msg == "" {
-		msg = errRequestWechatPay.Message
-	}
-	return errRequestWechatPay.WithMessage(msg, errs...)
 }
 
 func MsgErrBadRequest(msg string, errs ...error) *AppError {
