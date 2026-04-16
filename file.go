@@ -200,7 +200,7 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 		SetFormData(req.OtherParams)
 
 	if req.token != "" {
-		request = request.SetAuthToken(strings.TrimSpace(strings.TrimPrefix(req.token, "Bearer")))
+		request = setRequestAuthToken(request, req.token)
 	}
 	if len(req.Headers) > 0 {
 		request = request.SetHeaders(req.Headers)
@@ -213,7 +213,7 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("上传失败，响应状态码为：%s", resp.Status())
+		return newResponseStatusError("上传失败", resp)
 	}
 
 	return json.Unmarshal(resp.Body(), req.resp)

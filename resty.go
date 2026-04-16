@@ -43,14 +43,14 @@ func RPost(headers map[string]string, body interface{}, url string, value any, t
 	}
 	request := R().SetHeaders(headers).SetBody(body)
 	if len(token) > 0 {
-		request = request.SetAuthToken(strings.TrimSpace(strings.TrimPrefix(token[0], "Bearer")))
+		request = setRequestAuthToken(request, token[0])
 	}
 	resp, err := request.Post(url)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("请求失败，状态码为：%s", resp.Status())
+		return newResponseStatusError("请求失败", resp)
 	}
 
 	return json.Unmarshal(resp.Body(), value)
@@ -63,15 +63,27 @@ func RGet(headers map[string]string, query map[string]string, url string, value 
 	}
 	request := R().SetHeaders(headers).SetQueryParams(query)
 	if len(token) > 0 {
-		request = request.SetAuthToken(strings.TrimSpace(strings.TrimPrefix(token[0], "Bearer")))
+		request = setRequestAuthToken(request, token[0])
 	}
 	resp, err := request.Get(url)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("请求失败，状态码为：%s", resp.Status())
+		return newResponseStatusError("请求失败", resp)
 	}
 
 	return json.Unmarshal(resp.Body(), value)
+}
+
+func setRequestAuthToken(request *resty.Request, token string) *resty.Request {
+	token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer"))
+	if token == "" {
+		return request
+	}
+	return request.SetAuthToken(token)
+}
+
+func newResponseStatusError(prefix string, resp *resty.Response) error {
+	return fmt.Errorf("%s，状态码为：%s", prefix, resp.Status())
 }
