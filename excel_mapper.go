@@ -213,7 +213,7 @@ func (m *ExcelMapper) getStructInfo(elemType reflect.Type) (*structInfo, error) 
 		fields: make([]fieldInfo, 0, elemType.NumField()),
 	}
 
-	for i := 0; i < elemType.NumField(); i++ {
+	for i := range elemType.NumField() {
 		field := elemType.Field(i)
 		tag := field.Tag.Get(TagExcel)
 		if tag == "" || tag == "-" {

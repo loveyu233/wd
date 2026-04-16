@@ -137,7 +137,7 @@ func ValidateChineseIDCard(idCard string) bool {
 	}
 
 	// 检查前17位是否都是数字
-	for i := 0; i < 17; i++ {
+	for i := range 17 {
 		if idCard[i] < '0' || idCard[i] > '9' {
 			return false
 		}
@@ -154,7 +154,7 @@ func ValidateChineseIDCard(idCard string) bool {
 	checkCodes := []byte{'1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'}
 
 	sum := 0
-	for i := 0; i < 17; i++ {
+	for i := range 17 {
 		digit, _ := strconv.Atoi(string(idCard[i]))
 		sum += digit * weights[i]
 	}

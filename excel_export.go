@@ -320,7 +320,7 @@ func (e *ExcelExporter) getExportStructInfo(elemType reflect.Type) (*exportStruc
 	}
 
 	columnIndex := 0
-	for i := 0; i < elemType.NumField(); i++ {
+	for i := range elemType.NumField() {
 		field := elemType.Field(i)
 		tag := field.Tag.Get(TagExcel)
 
@@ -437,7 +437,7 @@ func (e *ExcelExporter) writeData(file *excelize.File, sheetName string,
 	batchSize := 1000 // 批量处理大小
 	cellData := make([][]interface{}, 0, batchSize)
 
-	for i := 0; i < dataValue.Len(); i++ {
+	for i := range dataValue.Len() {
 		item := dataValue.Index(i)
 		if item.Kind() == reflect.Ptr {
 			if item.IsNil() {

@@ -833,7 +833,7 @@ func HasTimeConflict(timeRanges ...TimeRange) bool {
 	}
 
 	// 检查每一对时间段是否冲突
-	for i := 0; i < len(timeRanges); i++ {
+	for i := range len(timeRanges) {
 		for j := i + 1; j < len(timeRanges); j++ {
 			if timeRanges[i].HasConflictWith(timeRanges[j]) {
 				return true
@@ -847,7 +847,7 @@ func HasTimeConflict(timeRanges ...TimeRange) bool {
 func HasTimeConflictReturnIDS(ranges ...TimeRange) []uint64 {
 	overlappingIDs := make(map[uint64]bool)
 
-	for i := 0; i < len(ranges); i++ {
+	for i := range len(ranges) {
 		for j := i + 1; j < len(ranges); j++ {
 			// 检查时间重合条件
 			if ranges[i].Start.Before(ranges[j].End) && ranges[i].End.After(ranges[j].Start) {

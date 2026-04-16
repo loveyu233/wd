@@ -828,13 +828,13 @@ func cloneContainerValue(value reflect.Value, visited map[containerVisitKey]refl
 		}
 		cloned := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		visited[visitKey] = cloned
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			cloned.Index(i).Set(cloneContainerTypedValue(value.Index(i), value.Type().Elem(), visited))
 		}
 		return cloned.Interface()
 	case reflect.Array:
 		cloned := reflect.New(value.Type()).Elem()
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			cloned.Index(i).Set(cloneContainerTypedValue(value.Index(i), value.Type().Elem(), visited))
 		}
 		return cloned.Interface()

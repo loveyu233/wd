@@ -44,7 +44,7 @@ func (v *patchFieldStructValidator) ValidateStruct(obj any) error {
 	case reflect.Slice, reflect.Array:
 		count := value.Len()
 		validateRet := make(binding.SliceValidationError, 0)
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if err := v.ValidateStruct(value.Index(i).Interface()); err != nil {
 				validateRet = append(validateRet, err)
 			}
@@ -83,7 +83,7 @@ func buildValidationStructValue(value reflect.Value) reflect.Value {
 	fields := make([]reflect.StructField, 0, value.NumField())
 	values := make([]reflect.Value, 0, value.NumField())
 
-	for i := 0; i < value.NumField(); i++ {
+	for i := range value.NumField() {
 		structField := valueType.Field(i)
 		if structField.PkgPath != "" {
 			continue
@@ -140,14 +140,14 @@ func normalizeValidationValue(value reflect.Value) any {
 		return buildValidationStructValue(value).Interface()
 	case reflect.Slice:
 		sliceValue := reflect.MakeSlice(reflect.SliceOf(patchValidationInterfaceType), value.Len(), value.Len())
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			sliceValue.Index(i).Set(patchValidationInterfaceValue(normalizeValidationValue(value.Index(i))))
 		}
 		return sliceValue.Interface()
 	case reflect.Array:
 		arrayType := reflect.ArrayOf(value.Len(), patchValidationInterfaceType)
 		arrayValue := reflect.New(arrayType).Elem()
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			arrayValue.Index(i).Set(patchValidationInterfaceValue(normalizeValidationValue(value.Index(i))))
 		}
 		return arrayValue.Interface()

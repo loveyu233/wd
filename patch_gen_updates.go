@@ -508,7 +508,7 @@ func patchFindStructFieldByName(value reflect.Value, target string) (reflect.Val
 	}
 
 	valueType := value.Type()
-	for i := 0; i < value.NumField(); i++ {
+	for i := range value.NumField() {
 		structField := valueType.Field(i)
 		if structField.PkgPath != "" {
 			continue
@@ -534,7 +534,7 @@ func patchFindStructFieldByJSONTag(value reflect.Value, target string) (reflect.
 	}
 
 	valueType := value.Type()
-	for i := 0; i < value.NumField(); i++ {
+	for i := range value.NumField() {
 		structField := valueType.Field(i)
 		if structField.PkgPath != "" {
 			continue
