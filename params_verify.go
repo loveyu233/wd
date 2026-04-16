@@ -65,7 +65,7 @@ func TranslateError(err error) error {
 // registerTagNameFunc 让验证器优先使用 json 标签作为字段名。
 func registerTagNameFunc(v *validator.Validate) {
 	v.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := strings.SplitN(fld.Tag.Get(TagJSON), ",", 2)[0]
+		name, _, _ := strings.Cut(fld.Tag.Get(TagJSON), ",")
 		if name == "-" {
 			return ""
 		}

@@ -448,13 +448,15 @@ func patchFieldCandidates(structField reflect.StructField) []string {
 		names = append(names, name)
 	}
 
-	patchName := strings.TrimSpace(strings.SplitN(structField.Tag.Get(patchTag), ",", 2)[0])
+	patchName, _, _ := strings.Cut(structField.Tag.Get(patchTag), ",")
+	patchName = strings.TrimSpace(patchName)
 	if patchName == "-" {
 		return nil
 	}
 	add(patchName)
 	add(structField.Name)
-	add(strings.SplitN(structField.Tag.Get(TagJSON), ",", 2)[0])
+	jsonName, _, _ := strings.Cut(structField.Tag.Get(TagJSON), ",")
+	add(jsonName)
 	return names
 }
 
@@ -541,7 +543,8 @@ func patchFindStructFieldByJSONTag(value reflect.Value, target string) (reflect.
 		}
 
 		fieldValue := value.Field(i)
-		if strings.SplitN(structField.Tag.Get(TagJSON), ",", 2)[0] == target {
+		jsonName, _, _ := strings.Cut(structField.Tag.Get(TagJSON), ",")
+		if jsonName == target {
 			return fieldValue, true
 		}
 		if structField.Anonymous {

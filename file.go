@@ -42,11 +42,11 @@ func GetFileContentType(file []byte) string {
 
 // GetFileNameType 用来取得文件名的扩展名。
 func GetFileNameType(fileName string) string {
-	split := strings.Split(fileName, ".")
-	if len(split) < 2 {
+	idx := strings.LastIndexByte(fileName, '.')
+	if idx == -1 {
 		return ""
 	}
-	return split[len(split)-1]
+	return fileName[idx+1:]
 }
 
 // ReadFileContent 用来读取指定路径的文件内容。

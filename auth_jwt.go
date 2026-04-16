@@ -641,13 +641,16 @@ func (mw *GinJWTMiddleware) jwtFromHeader(c *gin.Context, key string) (string, e
 		return "", MsgErrTokenClientInvalid("请先登录")
 	}
 
-	parts := strings.SplitN(authHeader, " ", 2)
-	if !((len(parts) == 1 && mw.WithoutDefaultTokenHeadName && mw.TokenHeadName == "") ||
-		(len(parts) == 2 && parts[0] == mw.TokenHeadName)) {
+	head, token, found := strings.Cut(authHeader, " ")
+	if !((!found && mw.WithoutDefaultTokenHeadName && mw.TokenHeadName == "") ||
+		(found && head == mw.TokenHeadName)) {
 		return "", MsgErrTokenClientInvalid("登陆凭证无效请重新登录")
 	}
 
-	return parts[len(parts)-1], nil
+	if !found {
+		return head, nil
+	}
+	return token, nil
 }
 
 // jwtFromQuery 用来从查询参数中提取 token。
@@ -792,13 +795,13 @@ func parseTokenLookupMethod(method string) (string, string, error) {
 		return "", "", errors.New("token lookup item is empty")
 	}
 
-	parts := strings.SplitN(method, ":", 2)
-	if len(parts) != 2 {
+	source, name, found := strings.Cut(method, ":")
+	if !found {
 		return "", "", fmt.Errorf("invalid token lookup item %q", method)
 	}
 
-	source := strings.TrimSpace(parts[0])
-	name := strings.TrimSpace(parts[1])
+	source = strings.TrimSpace(source)
+	name = strings.TrimSpace(name)
 	if source == "" || name == "" {
 		return "", "", fmt.Errorf("invalid token lookup item %q", method)
 	}
