@@ -45,7 +45,7 @@ func init() {
 func TranslateError(err error) error {
 	switch typedErr := err.(type) {
 	case *json.SyntaxError:
-		return fmt.Errorf("JSON语法错误: %s", typedErr.Error())
+		return fmt.Errorf("JSON语法错误: %w", typedErr)
 	case *json.UnmarshalTypeError:
 		return fmt.Errorf("参数类型错误: 字段 '%s' 应为 %s 类型", typedErr.Field, typedErr.Type)
 	case validator.ValidationErrors:
@@ -56,7 +56,7 @@ func TranslateError(err error) error {
 		return typedErr
 
 	case *strconv.NumError:
-		return fmt.Errorf("参数类型解析错误: '%s' %s", typedErr.Num, typedErr.Err)
+		return fmt.Errorf("参数类型解析错误: '%s': %w", typedErr.Num, typedErr.Err)
 	}
 
 	return err

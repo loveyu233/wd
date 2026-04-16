@@ -213,7 +213,7 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return errors.New("上传失败，响应状态码为：" + resp.Status())
+		return fmt.Errorf("上传失败，响应状态码为：%s", resp.Status())
 	}
 
 	return json.Unmarshal(resp.Body(), req.resp)

@@ -263,7 +263,7 @@ func (e *ExcelExporter) ExportToSheet(data interface{}, file *excelize.File, she
 	if sheetName != "Sheet1" {
 		index, err := file.NewSheet(sheetName)
 		if err != nil {
-			return fmt.Errorf("创建工作表失败: %v", err)
+			return fmt.Errorf("创建工作表失败: %w", err)
 		}
 		file.SetActiveSheet(index)
 	}
@@ -408,14 +408,14 @@ func (e *ExcelExporter) writeHeaders(file *excelize.File, sheetName string,
 		// 设置单元格值
 		err = file.SetCellValue(sheetName, cellName, fieldInfo.columnTitle)
 		if err != nil {
-			return fmt.Errorf("设置标题单元格失败 %s: %v", cellName, err)
+			return fmt.Errorf("设置标题单元格失败 %s: %w", cellName, err)
 		}
 
 		// 应用表头样式
 		if headerStyleID != 0 {
 			err = file.SetCellStyle(sheetName, cellName, cellName, headerStyleID)
 			if err != nil {
-				return fmt.Errorf("设置页眉样式失败: %v", err)
+				return fmt.Errorf("设置页眉样式失败: %w", err)
 			}
 		}
 	}
@@ -484,14 +484,14 @@ func (e *ExcelExporter) writeBatch(file *excelize.File, sheetName string,
 			// 设置单元格值
 			err := file.SetCellValue(sheetName, cellName, value)
 			if err != nil {
-				return fmt.Errorf("设置单元格失败 %s: %v", cellName, err)
+				return fmt.Errorf("设置单元格失败 %s: %w", cellName, err)
 			}
 
 			// 应用数据样式
 			if styleID != 0 {
 				err = file.SetCellStyle(sheetName, cellName, cellName, styleID)
 				if err != nil {
-					return fmt.Errorf("设置数据样式失败: %v", err)
+					return fmt.Errorf("设置数据样式失败: %w", err)
 				}
 			}
 		}

@@ -147,7 +147,7 @@ func (m *ExcelMapper) MapToStructs(filePath string, result interface{}) error {
 	// 打开Excel文件
 	file, err := excelize.OpenFile(filePath)
 	if err != nil {
-		return fmt.Errorf("打开excel文件失败: %v", err)
+		return fmt.Errorf("打开excel文件失败: %w", err)
 	}
 	defer file.Close()
 
@@ -167,7 +167,7 @@ func (m *ExcelMapper) MapToStructs(filePath string, result interface{}) error {
 	// 获取数据范围
 	rows, err := file.GetRows(sheetName)
 	if err != nil {
-		return fmt.Errorf("无法获取行: %v", err)
+		return fmt.Errorf("无法获取行: %w", err)
 	}
 
 	if len(rows) < m.DataStartRow {

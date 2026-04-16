@@ -62,21 +62,18 @@ func (s *SMSService) Client() *dysmsapi20170525.Client {
 }
 
 // SendMsg 用来发送单条短信。
-func (s *SMSService) SendMsg(req *dysmsapi20170525.SendSmsRequest) error {
+func (s *SMSService) SendMsg(req *dysmsapi20170525.SendSmsRequest) (err error) {
 	if s.client == nil {
 		return errors.New("短信客户端未初始化")
 	}
 	runtime := &util.RuntimeOptions{}
-	tryErr := func() (e error) {
-		defer func() {
-			if r := tea.Recover(recover()); r != nil {
-				e = r
-			}
-		}()
-		_, err := s.client.SendSmsWithOptions(req, runtime)
-		return err
+	defer func() {
+		if r := tea.Recover(recover()); r != nil {
+			err = r
+		}
 	}()
-	return tryErr
+	_, err = s.client.SendSmsWithOptions(req, runtime)
+	return err
 }
 
 // SendSimpleMsg 用来发送简化版单条短信。
@@ -90,21 +87,18 @@ func (s *SMSService) SendSimpleMsg(targetPhoneNumber, signName, templateCode, te
 }
 
 // SendBatchSms 用来批量发送短信。
-func (s *SMSService) SendBatchSms(req *dysmsapi20170525.SendBatchSmsRequest) error {
+func (s *SMSService) SendBatchSms(req *dysmsapi20170525.SendBatchSmsRequest) (err error) {
 	if s.client == nil {
 		return errors.New("短信客户端未初始化")
 	}
 	runtime := &util.RuntimeOptions{}
-	tryErr := func() (e error) {
-		defer func() {
-			if r := tea.Recover(recover()); r != nil {
-				e = r
-			}
-		}()
-		_, err := s.client.SendBatchSmsWithOptions(req, runtime)
-		return err
+	defer func() {
+		if r := tea.Recover(recover()); r != nil {
+			err = r
+		}
 	}()
-	return tryErr
+	_, err = s.client.SendBatchSmsWithOptions(req, runtime)
+	return err
 }
 
 // SendSimpleBatchMsg 用来发送简化版批量短信。

@@ -3,6 +3,7 @@ package wd
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -49,7 +50,7 @@ func RPost(headers map[string]string, body interface{}, url string, value any, t
 		return err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return errors.New("请求失败，状态码为：" + resp.Status())
+		return fmt.Errorf("请求失败，状态码为：%s", resp.Status())
 	}
 
 	return json.Unmarshal(resp.Body(), value)
@@ -69,7 +70,7 @@ func RGet(headers map[string]string, query map[string]string, url string, value 
 		return err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return errors.New("请求失败，状态码为：" + resp.Status())
+		return fmt.Errorf("请求失败，状态码为：%s", resp.Status())
 	}
 
 	return json.Unmarshal(resp.Body(), value)

@@ -49,7 +49,7 @@ func ConvertStringToUint32(str string) (uint32, error) {
 	// ParseUint会自动去除前导零并转换为数字
 	result, err := strconv.ParseUint(str, 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("转换失败: %v", err)
+		return 0, fmt.Errorf("转换失败: %w", err)
 	}
 
 	return uint32(result), nil
