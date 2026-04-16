@@ -466,6 +466,96 @@ _, err = query.User.WithContext(c).
 - `oldModel` 允许传 `nil`，此时只要请求中显式传了字段，就会直接生成更新表达式
 - `patch:"-"` 表示跳过该字段，不参与自动构建
 
+完整示例：
+
+```go
+type UpdateUserReq struct {
+    Version  uint64                `json:"version" binding:"required"`
+    Nickname wd.Field[string]      `json:"nickname"`
+    Email    wd.Field[string]      `json:"email"`
+    Birthday wd.Field[wd.DateOnly] `json:"birthday" patch:"Date"`
+    Tags     wd.Field[[]string]    `json:"tags"`
+}
+
+group.PATCH("/user/:id", func(c *gin.Context) {
+    var req UpdateUserReq
+    if err := c.ShouldBindJSON(&req); err != nil {
+        wd.ResponseParamError(c, err)
+        return
+    }
+
+    userID, err := wd.GinPathRequired[uint64](c, "id")
+    if err != nil {
+        wd.ResponseParamError(c, err)
+        return
+    }
+
+    oldUser, err := query.User.WithContext(c).
+        Where(query.User.ID.Eq(userID)).
+        First()
+    if err != nil {
+        wd.ResponseError(c, err)
+        return
+    }
+
+    if oldUser.Version != req.Version {
+        wd.ResponseError(c, wd.MsgErrVERSION_CONFLICT("当前为旧数据"))
+        return
+    }
+
+    updates, err := wd.BuildGenUpdates(req, oldUser, query.User)
+    if err != nil {
+        wd.ResponseError(c, err)
+        return
+    }
+
+    if len(updates) == 0 {
+        wd.ResponseSuccess(c, "无修改内容")
+        return
+    }
+
+    updates = append(updates, query.User.Version.Add(1))
+
+    _, err = query.User.WithContext(c).
+        Where(query.User.ID.Eq(userID), query.User.Version.Eq(req.Version)).
+        UpdateColumnSimple(updates...)
+    if err != nil {
+        wd.ResponseError(c, err)
+        return
+    }
+
+    wd.ResponseSuccess(c, "ok")
+})
+```
+
+如果不需要先查旧值，也可以直接传 `nil`：
+
+```go
+updates, err := wd.BuildGenUpdates(req, nil, query.User)
+if err != nil {
+    wd.ResponseError(c, err)
+    return
+}
+```
+
+此时的行为是：
+
+- 没传字段：跳过
+- 显式传普通值：直接生成 `Value(...)`
+- 显式传 `null`：如果目标字段支持 `Null()`，则生成置空更新
+
+常见标签写法：
+
+```go
+type UpdateUserReq struct {
+    Name   wd.Field[string] `json:"name" patch:"Nickname"`
+    Remark wd.Field[string] `json:"remark" patch:"-"`
+}
+```
+
+- `patch:"Nickname"`：把请求字段映射到 `query.User.Nickname`
+- `patch:"-"`：跳过该字段，不参与自动构建
+
 ### 5.3 预编译请求结构
 
 `params_precompiled.go` 提供了一组非常实用的请求结构：
