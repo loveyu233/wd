@@ -15,8 +15,10 @@ import (
 	refundrequest "github.com/ArtisanCloud/PowerWeChat/v3/src/payment/refund/request"
 	"github.com/gin-gonic/gin"
 	wd "github.com/loveyu233/wd"
-	"github.com/loveyu233/wd/internal/xhelper"
+	"github.com/shopspring/decimal"
 )
+
+var decimalYuanRatio = decimal.NewFromInt(100)
 
 // Service 聚合微信支付的下单、退款与回调能力。
 type Service struct {
@@ -29,9 +31,6 @@ type Service struct {
 func New(config Config, handler Handler) (*Service, error) {
 	if config.AppID == "" || config.MchID == "" {
 		return nil, errors.New("微信支付 AppID 或 MchID 不能为空")
-	}
-	if xhelper.IsNil(handler) {
-		return nil, errors.New("微信支付处理器不能为空")
 	}
 	paymentApp, err := wechatpayment.NewPayment(&wechatpayment.UserConfig{
 		AppID:              config.AppID,
@@ -60,12 +59,10 @@ func New(config Config, handler Handler) (*Service, error) {
 }
 
 // NewWithClient 用来复用外部传入的微信支付客户端。
+// handler 可以为 nil，此时仍可直接调用 Pay/Refund，但不会注册异步回调路由。
 func NewWithClient(client *wechatpayment.Payment, handler Handler, saveHandlerLog bool) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("微信支付客户端不能为空")
-	}
-	if xhelper.IsNil(handler) {
-		return nil, errors.New("微信支付处理器不能为空")
 	}
 	return &Service{client: client, handler: handler, saveHandlerLog: saveHandlerLog}, nil
 }
@@ -76,12 +73,12 @@ func (s *Service) Client() *wechatpayment.Payment {
 }
 
 func (s *Service) pay(c *gin.Context) {
-	payRequest, err := s.handler.BuildPayRequest(c)
-	if err != nil {
-		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
+	var payRequest PayRequest
+	if err := c.ShouldBindJSON(&payRequest); err != nil {
+		wd.ResponseParamError(c, err)
 		return
 	}
-	resp, err := s.Pay(c.Request.Context(), payRequest)
+	resp, err := s.Pay(c.Request.Context(), &payRequest)
 	if err != nil {
 		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 		return
@@ -90,12 +87,12 @@ func (s *Service) pay(c *gin.Context) {
 }
 
 func (s *Service) refund(c *gin.Context) {
-	refundRequest, err := s.handler.BuildRefundRequest(c)
-	if err != nil {
-		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
+	var refundRequest RefundRequest
+	if err := c.ShouldBindJSON(&refundRequest); err != nil {
+		wd.ResponseParamError(c, err)
 		return
 	}
-	resp, err := s.Refund(c.Request.Context(), refundRequest)
+	resp, err := s.Refund(c.Request.Context(), &refundRequest)
 	if err != nil {
 		wd.ResponseError(c, wd.MsgErrRequestWechatPay("微信支付请求失败", err))
 		return
@@ -104,7 +101,7 @@ func (s *Service) refund(c *gin.Context) {
 }
 
 func (s *Service) wxPayCallback(c *gin.Context) {
-	res, err := s.payNotify(c.Request, s.handler.OnPaymentNotify)
+	res, err := s.payNotify(c.Request)
 	if err != nil {
 		writeCallbackFailure(c)
 		return
@@ -115,7 +112,7 @@ func (s *Service) wxPayCallback(c *gin.Context) {
 }
 
 func (s *Service) wxRefundCallback(c *gin.Context) {
-	res, err := s.refundNotify(c.Request, s.handler.OnRefundNotify)
+	res, err := s.refundNotify(c.Request)
 	if err != nil {
 		writeCallbackFailure(c)
 		return
@@ -127,11 +124,16 @@ func (s *Service) wxRefundCallback(c *gin.Context) {
 
 // Pay 用来发起微信支付下单。
 func (s *Service) Pay(ctx context.Context, req *PayRequest) (*PayResponse, error) {
-	if req == nil {
-		return nil, errors.New("支付请求不能为空")
+	if err := validatePayRequest(req); err != nil {
+		return nil, err
 	}
+	amountFen, err := convertPaymentAmountToFen(req.Amount, "amount")
+	if err != nil {
+		return nil, err
+	}
+
 	options := &orderrequest.RequestJSAPIPrepay{
-		Amount:      &orderrequest.JSAPIAmount{Total: int(req.Price), Currency: "CNY"},
+		Amount:      &orderrequest.JSAPIAmount{Total: int(amountFen), Currency: "CNY"},
 		Attach:      req.Attach,
 		Description: req.Description,
 		OutTradeNo:  req.OutTradeNo,
@@ -165,17 +167,26 @@ func (s *Service) Pay(ctx context.Context, req *PayRequest) (*PayResponse, error
 
 // Refund 用来发起微信支付退款。
 func (s *Service) Refund(ctx context.Context, req *RefundRequest) (*RefundResponse, error) {
-	if req == nil {
-		return nil, errors.New("退款请求不能为空")
+	if err := validateRefundRequest(req); err != nil {
+		return nil, err
 	}
+	refundFen, err := convertPaymentAmountToFen(req.RefundAmount, "refund_amount")
+	if err != nil {
+		return nil, err
+	}
+	totalFen, err := convertPaymentAmountToFen(req.TotalAmount, "total_amount")
+	if err != nil {
+		return nil, err
+	}
+
 	outRefundNo := fmt.Sprintf("%s@%d", req.OrderID, wd.Now().Unix())
 	options := &refundrequest.RequestRefund{
 		OutTradeNo:  req.OrderID,
 		OutRefundNo: outRefundNo,
 		Reason:      req.RefundDesc,
 		Amount: &refundrequest.RefundAmount{
-			Refund:   req.RefundFee,
-			Total:    req.TotalFee,
+			Refund:   int(refundFen),
+			Total:    int(totalFen),
 			From:     []*refundrequest.RefundAmountFrom{},
 			Currency: "CNY",
 		},
@@ -193,7 +204,10 @@ func (s *Service) Refund(ctx context.Context, req *RefundRequest) (*RefundRespon
 	return &RefundResponse{Code: 0, OutRefundNo: outRefundNo, Msg: "SUCCESS"}, nil
 }
 
-func (s *Service) payNotify(r *http.Request, callback func(ctx context.Context, orderID, attach string) error) (*http.Response, error) {
+func (s *Service) payNotify(r *http.Request) (*http.Response, error) {
+	if s.handler == nil {
+		return nil, errors.New("未配置微信支付回调处理器")
+	}
 	ctx := r.Context()
 	return s.client.HandlePaidNotify(r, func(message *notifyrequest.RequestNotify, transaction *models.Transaction, fail func(message string)) interface{} {
 		if message.EventType != "TRANSACTION.SUCCESS" {
@@ -203,7 +217,8 @@ func (s *Service) payNotify(r *http.Request, callback func(ctx context.Context, 
 			fail("payment fail")
 			return false
 		}
-		if err := callback(ctx, transaction.OutTradeNo, transaction.Attach); err != nil {
+		notice := PaymentNotify{OrderID: transaction.OutTradeNo, Attach: transaction.Attach}
+		if err := s.handler.OnPaymentNotify(ctx, notice); err != nil {
 			fail("payment fail")
 			return false
 		}
@@ -211,7 +226,10 @@ func (s *Service) payNotify(r *http.Request, callback func(ctx context.Context, 
 	})
 }
 
-func (s *Service) refundNotify(r *http.Request, callback func(ctx context.Context, refundOrderID string) error) (*http.Response, error) {
+func (s *Service) refundNotify(r *http.Request) (*http.Response, error) {
+	if s.handler == nil {
+		return nil, errors.New("未配置微信支付回调处理器")
+	}
 	ctx := r.Context()
 	return s.client.HandleRefundedNotify(r, func(message *notifyrequest.RequestNotify, transaction *models.Refund, fail func(message string)) interface{} {
 		if message.EventType != "REFUND.SUCCESS" {
@@ -221,7 +239,8 @@ func (s *Service) refundNotify(r *http.Request, callback func(ctx context.Contex
 			fail("refund fail")
 			return false
 		}
-		if err := callback(ctx, transaction.OutRefundNo); err != nil {
+		notice := RefundNotify{RefundOrderID: transaction.OutRefundNo}
+		if err := s.handler.OnRefundNotify(ctx, notice); err != nil {
 			fail("refund fail")
 			return false
 		}
@@ -237,4 +256,50 @@ func (s *Service) QueryOrder(ctx context.Context, orderID string) (*QueryOrderRe
 // QueryRefundOrder 用来查询微信退款订单。
 func (s *Service) QueryRefundOrder(ctx context.Context, orderID string) (*QueryRefundResponse, error) {
 	return s.client.Refund.Query(ctx, orderID)
+}
+
+func validatePayRequest(req *PayRequest) error {
+	if req == nil {
+		return errors.New("支付请求不能为空")
+	}
+	if req.OutTradeNo == "" {
+		return errors.New("out_trade_no 不能为空")
+	}
+	if req.Description == "" {
+		return errors.New("description 不能为空")
+	}
+	if req.OpenID == "" {
+		return errors.New("openid 不能为空")
+	}
+	if req.Amount.LessThanOrEqual(decimal.Zero) {
+		return errors.New("amount 必须大于 0")
+	}
+	return nil
+}
+
+func validateRefundRequest(req *RefundRequest) error {
+	if req == nil {
+		return errors.New("退款请求不能为空")
+	}
+	if req.OrderID == "" {
+		return errors.New("order_id 不能为空")
+	}
+	if req.TotalAmount.LessThanOrEqual(decimal.Zero) {
+		return errors.New("total_amount 必须大于 0")
+	}
+	if req.RefundAmount.LessThanOrEqual(decimal.Zero) {
+		return errors.New("refund_amount 必须大于 0")
+	}
+	if req.RefundAmount.GreaterThan(req.TotalAmount) {
+		return errors.New("refund_amount 不能大于 total_amount")
+	}
+	return nil
+}
+
+func convertPaymentAmountToFen(amount decimal.Decimal, fieldName string) (int64, error) {
+	fen := amount.Mul(decimalYuanRatio)
+	if !fen.Equal(fen.Truncate(0)) {
+		return 0, fmt.Errorf("%s 最多支持 2 位小数", fieldName)
+	}
+	return fen.IntPart(), nil
 }

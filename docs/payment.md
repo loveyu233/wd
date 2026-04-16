@@ -5,7 +5,6 @@
 当前内置：
 
 - `payment/wechat`
-- `payment/alipay`
 
 它的目标不是替你决定订单系统怎么做，而是把这些重复工作统一掉：
 
@@ -16,34 +15,25 @@
 
 ## 一、统一设计思路
 
-支付模块强制业务方自己实现 `Handler`，这样非常适合商城、订单、收银台场景。
+微信支付子包默认提供两种用法：
 
-### 1. 微信支付 Handler
+- 直接调用 `Pay / Refund / QueryOrder / QueryRefundOrder`
+- 注册现成的 Gin 路由，直接接收标准请求体
 
-```go
-type Handler interface {
-    BuildPayRequest(c *gin.Context) (*PayRequest, error)
-    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
-    OnPaymentNotify(ctx context.Context, orderID, attach string) error
-    OnRefundNotify(ctx context.Context, refundOrderID string) error
-}
-```
-
-### 2. 支付宝 Handler
+如果你需要处理异步回调，再额外实现一个很小的 `Handler`：
 
 ```go
 type Handler interface {
-    BuildPayRequest(c *gin.Context) (*PayRequest, error)
-    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
     OnPaymentNotify(ctx context.Context, notice PaymentNotify) error
     OnRefundNotify(ctx context.Context, notice RefundNotify) error
 }
 ```
 
-你可以把它理解为两层分工：
+这意味着：
 
-- `wd/payment/*`：和第三方平台交互
-- 你的 `Handler`：从订单系统拿业务数据，并决定订单状态怎么变更
+- 下单和退款不再要求你先实现 `BuildPayRequest / BuildRefundRequest`
+- 工具库直接接收标准 `PayRequest / RefundRequest`
+- 只有异步回调才需要业务方提供处理器
 
 ## 二、微信支付 `payment/wechat`
 
@@ -58,7 +48,7 @@ svc, err := paymentwechat.New(
         NotifyURL:      "https://api.example.com/payment/wechat/notify/payment",
         SaveHandlerLog: true,
     },
-    yourWechatPayHandler,
+    yourWechatPayHandler, // 不需要回调时可直接传 nil
 )
 ```
 
@@ -78,48 +68,78 @@ payment.Register(r.Group("/wechat"), svc)
 
 - `POST /wechat/pay`
 - `POST /wechat/refund`
+
+如果初始化时传了 `Handler`，还会注册：
+
 - `POST /wechat/notify/payment`
 - `POST /wechat/notify/refund`
 
-### 3. 业务侧下单请求构造
+### 3. 请求模型
 
-`BuildPayRequest` 的职责不是简单从前端抄字段，而是：
-
-- 校验订单归属
-- 校验订单状态是否允许支付
-- 从数据库里拿真实金额
-- 拼好 `Attach` 扩展字段
-
-一个典型实现：
+金额统一使用“元”为单位的 `decimal.Decimal`，工具库内部会自动转换为微信支付要求的“分”：
 
 ```go
-func (h *payHandler) BuildPayRequest(c *gin.Context) (*paymentwechat.PayRequest, error) {
-    var req struct {
-        OrderNo string `json:"order_no" binding:"required"`
-    }
-    if err := c.ShouldBindJSON(&req); err != nil {
-        return nil, err
-    }
+type PayRequest struct {
+    Amount      decimal.Decimal `json:"amount"`
+    Description string          `json:"description"`
+    OpenID      string          `json:"openid"`
+    Attach      string          `json:"attach"`
+    NotifyURL   string          `json:"notify_url,omitempty"`
+    OutTradeNo  string          `json:"out_trade_no"`
+}
 
-    order := findOrderFromDB(req.OrderNo)
-    if order == nil {
-        return nil, errors.New("订单不存在")
-    }
-    if order.Status != "WAIT_PAY" {
-        return nil, errors.New("当前订单不可支付")
-    }
-
-    return &paymentwechat.PayRequest{
-        Price:       order.AmountFen,
-        Description: order.Title,
-        OpenID:      order.OpenID,
-        Attach:      order.OrderNo,
-        OutTradeNo:  order.OrderNo,
-    }, nil
+type RefundRequest struct {
+    OrderID      string          `json:"order_id,omitempty"`
+    TotalAmount  decimal.Decimal `json:"total_amount,omitempty"`
+    RefundAmount decimal.Decimal `json:"refund_amount,omitempty"`
+    RefundDesc   string          `json:"refund_desc,omitempty"`
+    NotifyURL    string          `json:"notify_url,omitempty"`
 }
 ```
 
-### 4. 直接调用能力
+要求：
+
+- 金额必须大于 0
+- 最多支持 2 位小数
+- `RefundAmount` 不能大于 `TotalAmount`
+
+### 4. 直接调用示例
+
+```go
+resp, err := svc.Pay(ctx, &paymentwechat.PayRequest{
+    Amount:      decimal.RequireFromString("199.00"),
+    Description: "年度会员",
+    OpenID:      "openid-1001",
+    OutTradeNo:  "order-20260410-0001",
+})
+```
+
+退款：
+
+```go
+resp, err := svc.Refund(ctx, &paymentwechat.RefundRequest{
+    OrderID:      "order-20260410-0001",
+    TotalAmount:  decimal.RequireFromString("199.00"),
+    RefundAmount: decimal.RequireFromString("199.00"),
+    RefundDesc:   "用户申请退款",
+})
+```
+
+### 5. 回调处理示例
+
+```go
+type payHandler struct{}
+
+func (payHandler) OnPaymentNotify(ctx context.Context, notice paymentwechat.PaymentNotify) error {
+    return markOrderPaid(notice.OrderID, notice.Attach)
+}
+
+func (payHandler) OnRefundNotify(ctx context.Context, notice paymentwechat.RefundNotify) error {
+    return markOrderRefunded(notice.RefundOrderID)
+}
+```
+
+### 6. 直接调用能力
 
 除了走路由，你也可以直接用 service：
 
@@ -134,115 +154,33 @@ func (h *payHandler) BuildPayRequest(c *gin.Context) (*paymentwechat.PayRequest,
 - 管理后台手动退款
 - 对账任务查询渠道订单状态
 
-## 三、支付宝支付 `payment/alipay`
+## 三、推荐的订单处理方式
 
-### 1. 初始化
+### 1. 金额只信数据库，不信前端
 
-```go
-svc, err := paymentalipay.New(
-    paymentalipay.Config{
-        AppID:                "2021xxxx",
-        AppPrivateKey:        "private-key",
-        AppPublicKeyFilePath: "./appPublicKey.pem",
-        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
-        AliRootKeyFilePath:   "./alipayRootCert.crt",
-        NotifyURL:            "https://api.example.com/payment/alipay/notify",
-        SaveHandlerLog:       true,
-    },
-    yourAlipayHandler,
-)
-```
-
-若已有客户端：
-
-```go
-svc, err := paymentalipay.NewWithClient(
-    "app-id",
-    alipayClient,
-    aliPublicKey,
-    "https://api.example.com/payment/alipay/notify",
-    yourAlipayHandler,
-    true,
-)
-```
-
-### 2. 路由注册
-
-```go
-payment.Register(r.Group("/alipay"), svc)
-```
-
-默认路由：
-
-- `POST /alipay/pay`
-- `POST /alipay/refund`
-- `POST /alipay/notify`
-
-### 3. 直接调用能力
-
-- `TradeCreate`
-- `TradeQuery`
-- `TradeRefund`
-- `TradeFastPayRefundQuery`
-
-与微信支付不同，支付宝回调会给你更完整的结构化载荷：
-
-- `PaymentNotify`
-- `RefundNotify`
-
-业务侧通常只需要围绕 `OutTradeNo` 做幂等落库即可。
-
-## 四、推荐的订单处理方式
-
-### 1. 让支付模块只关心渠道，不关心订单表结构
-
-也就是说：
-
-- `payment/*` 模块不直接查你的订单表
-- `Handler` 从你自己的 service/repo 查订单
-- 模块只消费你组装好的支付请求数据
-
-这样后续订单表怎么变都不会影响支付接入层。
+前端最多传订单号，订单标题、金额、openid 都建议由业务系统自己查出来再组装 `PayRequest`。
 
 ### 2. 回调处理一定要幂等
 
-不管微信还是支付宝，都必须假设回调会重试。
-
 推荐写法：
 
-1. 根据 `orderID/outTradeNo` 查订单
+1. 根据 `orderID` 查订单
 2. 如果订单已经是成功状态，直接返回成功
 3. 如果状态未完成，则更新状态并记录渠道流水号
 4. 整个过程最好放事务里
 
-### 3. 金额只信数据库，不信前端
+### 3. 工具库负责渠道，业务负责状态机
 
-在 `BuildPayRequest` / `BuildRefundRequest` 里，前端最多传订单号，不要让前端直接决定金额。
+建议分层：
 
-### 4. 支付回调要和业务状态机保持一致
-
-例如：
-
-- `WAIT_PAY -> PAID`
-- `PAID -> REFUNDING -> REFUNDED`
-
-而不是回调一来就直接写任意状态。
-
-## 五、常见接入分层
-
-推荐把职责拆成这样：
-
-- `handler`：接 HTTP 请求，解析参数
-- `payment handler`：实现 `BuildPayRequest / BuildRefundRequest / OnNotify`
+- `handler`：接 HTTP 请求，绑定参数
 - `order service`：订单状态机、幂等、事务
-- `repo`：订单表读写
+- `payment/wechat`：渠道请求、验签、回调解析
 
-这样支付接入升级、换渠道、补偿任务都比较容易维护。
-
-## 六、仓库内可参考示例
+## 四、仓库内可参考示例
 
 - `test/projectflow/payment_flow_test.go`
 - `test/projectflow/shared_test.go`
 - `test/projectflow/wechatmini_real_flow_test.go`
 
-其中 `wechatmini_real_flow_test.go` 最值得看，因为它把“小程序登录 -> 创建订单 -> 发起支付 -> 回调改状态”串成了一条完整业务链。
+其中 `wechatmini_real_flow_test.go` 展示了“小程序登录 -> 创建订单 -> 组装支付请求 -> 回调改状态”的完整业务链。

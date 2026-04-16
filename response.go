@@ -51,8 +51,6 @@ var (
 	errRequestExternalService = NewAppError(100000, "服务请求失败，请稍后重试", nil)
 	errRequestWechat          = NewAppError(100001, "微信服务请求失败", nil)
 	errRequestWechatPay       = NewAppError(100002, "微信支付请求失败", nil)
-	errRequestAli             = NewAppError(100003, "支付宝服务请求失败", nil)
-	errRequestAliPay          = NewAppError(100004, "支付宝支付请求失败", nil)
 
 	// 400xxx 客户端错误
 	errBadRequest         = NewAppError(400000, "请求错误", nil)
@@ -131,18 +129,6 @@ func MsgErrRequestWechatPay(msg string, errs ...error) *AppError {
 		msg = errRequestWechatPay.Message
 	}
 	return errRequestWechatPay.WithMessage(msg, errs...)
-}
-func MsgErrRequestAli(msg string, errs ...error) *AppError {
-	if msg == "" {
-		msg = errRequestAli.Message
-	}
-	return errRequestAli.WithMessage(msg, errs...)
-}
-func MsgErrRequestAliPay(msg string, errs ...error) *AppError {
-	if msg == "" {
-		msg = errRequestAliPay.Message
-	}
-	return errRequestAliPay.WithMessage(msg, errs...)
 }
 
 func MsgErrBadRequest(msg string, errs ...error) *AppError {

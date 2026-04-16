@@ -15,7 +15,6 @@ require (
 	github.com/elastic/go-elasticsearch/v9 v9.2.1
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-co-op/gocron/v2 v2.18.1
-	github.com/go-pay/gopay v1.5.115
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1
 	github.com/go-playground/validator/v10 v10.28.0
@@ -69,10 +68,6 @@ require (
 	github.com/glebarez/sqlite v1.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-pay/crypto v0.0.1 // indirect
-	github.com/go-pay/util v0.0.4 // indirect
-	github.com/go-pay/xlog v0.0.3 // indirect
-	github.com/go-pay/xtime v0.0.2 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect

@@ -310,7 +310,7 @@ wd.ResponseSuccess(c, order)
 
 ### 3.4 第三方登录后手动签发 token
 
-这个模式在 `auth/wechatmini`、`auth/alipaymini` 里很常见：
+这个模式在 `auth/wechatmini` 里很常见：
 
 ```go
 jwtMW, _ := wd.NewGinJWTMiddleware(
@@ -361,7 +361,7 @@ _ = err
 
 `wd` 内置了一套业务错误码：
 
-- 外部服务失败：`MsgErrRequestWechat` / `MsgErrRequestAliPay` 等
+- 外部服务失败：`MsgErrRequestWechat` / `MsgErrRequestWechatPay` 等
 - 参数错误：`MsgErrInvalidParam`
 - 未登录：`MsgErrUnauthorized`
 - 权限不足：`MsgErrForbiddenAuth`
@@ -903,7 +903,6 @@ _ = wd.InsEs.CustomBulkClose()
 当前内置：
 
 - `auth/wechatmini`
-- `auth/alipaymini`
 
 ### 10.2 业务方需要实现什么
 
@@ -960,32 +959,7 @@ auth.Register(r.Group("/wechatmini"), svc)
 - `GetCode`
 - `GetUnlimitedCode`
 
-也就是它不只是“登录服务”，也顺手封了小程序码生成能力。
-
-### 10.4 支付宝小程序登录
-
-初始化：
-
-```go
-svc, err := authalipaymini.New(
-    authalipaymini.Config{
-        AppID:                "2021xxxx",
-        AppPrivateKey:        "private-key",
-        AESKey:               "aes-key-base64",
-        AppPublicKeyFilePath: "./appPublicKey.pem",
-        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
-        AliRootKeyFilePath:   "./alipayRootCert.crt",
-        SaveHandlerLog:       true,
-    },
-    yourUserHandler,
-)
-```
-
-注册后会暴露：
-
-- `POST /alipaymini/login`
-
-### 10.5 推荐接入方式
+### 10.4 推荐接入方式
 
 认证模块最推荐的模式是：
 
@@ -1002,20 +976,25 @@ svc, err := authalipaymini.New(
 当前内置：
 
 - `payment/wechat`
-- `payment/alipay`
 
-### 11.1 微信支付
+### 11.1 设计目标
 
-业务方实现接口：
+支付子包现在更偏工具库设计：
+
+- 直接暴露 `Pay / Refund / QueryOrder / QueryRefundOrder`
+- 注册路由时直接接收标准请求体
+- 只有异步回调才需要业务方实现 `Handler`
+
+`Handler` 现在只负责通知处理：
 
 ```go
 type Handler interface {
-    BuildPayRequest(c *gin.Context) (*PayRequest, error)
-    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
-    OnPaymentNotify(ctx context.Context, orderID, attach string) error
-    OnRefundNotify(ctx context.Context, refundOrderID string) error
+    OnPaymentNotify(ctx context.Context, notice PaymentNotify) error
+    OnRefundNotify(ctx context.Context, notice RefundNotify) error
 }
 ```
+
+### 11.2 微信支付
 
 初始化：
 
@@ -1028,7 +1007,7 @@ svc, err := paymentwechat.New(
         NotifyURL:      "https://api.example.com/payment/wechat/notify/payment",
         SaveHandlerLog: true,
     },
-    yourWechatPayHandler,
+    yourWechatPayHandler, // 不需要回调时可传 nil
 )
 ```
 
@@ -1048,58 +1027,58 @@ payment.Register(r.Group("/wechat"), svc)
 
 - `POST /wechat/pay`
 - `POST /wechat/refund`
+
+如果初始化时传了 `Handler`，还会注册：
+
 - `POST /wechat/notify/payment`
 - `POST /wechat/notify/refund`
 
-除了路由方式，也能直接调用：
+### 11.3 金额模型
 
-- `Pay(ctx, req)`
-- `Refund(ctx, req)`
-- `QueryOrder(ctx, orderID)`
-- `QueryRefundOrder(ctx, orderID)`
-
-### 11.2 支付宝支付
-
-业务方实现：
+金额统一使用元为单位的 `decimal.Decimal`：
 
 ```go
-type Handler interface {
-    BuildPayRequest(c *gin.Context) (*PayRequest, error)
-    BuildRefundRequest(c *gin.Context) (*RefundRequest, error)
-    OnPaymentNotify(ctx context.Context, notice PaymentNotify) error
-    OnRefundNotify(ctx context.Context, notice RefundNotify) error
+type PayRequest struct {
+    Amount      decimal.Decimal `json:"amount"`
+    Description string          `json:"description"`
+    OpenID      string          `json:"openid"`
+    Attach      string          `json:"attach"`
+    NotifyURL   string          `json:"notify_url,omitempty"`
+    OutTradeNo  string          `json:"out_trade_no"`
+}
+
+type RefundRequest struct {
+    OrderID      string          `json:"order_id,omitempty"`
+    TotalAmount  decimal.Decimal `json:"total_amount,omitempty"`
+    RefundAmount decimal.Decimal `json:"refund_amount,omitempty"`
+    RefundDesc   string          `json:"refund_desc,omitempty"`
+    NotifyURL    string          `json:"notify_url,omitempty"`
 }
 ```
 
-初始化：
+工具库内部会自动把元转换成微信要求的分，并校验最多 2 位小数。
+
+### 11.4 直接调用示例
 
 ```go
-svc, err := paymentalipay.New(
-    paymentalipay.Config{
-        AppID:                "2021xxxx",
-        AppPrivateKey:        "private-key",
-        AppPublicKeyFilePath: "./appPublicKey.pem",
-        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
-        AliRootKeyFilePath:   "./alipayRootCert.crt",
-        NotifyURL:            "https://api.example.com/payment/alipay/notify",
-        SaveHandlerLog:       true,
-    },
-    yourAlipayHandler,
-)
+resp, err := svc.Pay(ctx, &paymentwechat.PayRequest{
+    Amount:      decimal.RequireFromString("199.00"),
+    Description: "年度会员",
+    OpenID:      "openid-1001",
+    OutTradeNo:  "order-20260410-0001",
+})
 ```
 
-注册后路由：
+退款：
 
-- `POST /alipay/pay`
-- `POST /alipay/refund`
-- `POST /alipay/notify`
-
-同时支持直接调用：
-
-- `TradeCreate`
-- `TradeQuery`
-- `TradeRefund`
-- `TradeFastPayRefundQuery`
+```go
+resp, err := svc.Refund(ctx, &paymentwechat.RefundRequest{
+    OrderID:      "order-20260410-0001",
+    TotalAmount:  decimal.RequireFromString("199.00"),
+    RefundAmount: decimal.RequireFromString("199.00"),
+    RefundDesc:   "用户申请退款",
+})
+```
 
 ---
 
@@ -1513,10 +1492,8 @@ err := wd.RPost(
 | `auth/register.go` | `auth.Register` |
 | `auth/types.go` | `auth.Identity`、`auth.UserHandler` |
 | `auth/wechatmini` | `New`、`NewWithClient`、`RegisterRoutes`、`CreateQRCode`、`GetCode`、`GetUnlimitedCode` |
-| `auth/alipaymini` | `New`、`NewWithClient`、`RegisterRoutes` |
 | `payment/register.go` | `payment.Register` |
 | `payment/wechat` | `New`、`NewWithClient`、`RegisterRoutes`、`Pay`、`Refund`、`QueryOrder`、`QueryRefundOrder` |
-| `payment/alipay` | `New`、`NewWithClient`、`RegisterRoutes`、`TradeCreate`、`TradeQuery`、`TradeRefund`、`TradeFastPayRefundQuery` |
 | `message/register.go` | `message.Register` |
 | `message/officialaccount` | `New`、`NewWithClient`、`RegisterRoutes`、`Push`、`PushTemplateMessage` |
 | `message/miniprogram` | `New`、`NewWithClient`、`SubscribeMessageSend` |

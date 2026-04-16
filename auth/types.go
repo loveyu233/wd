@@ -8,8 +8,6 @@ import (
 const (
 	// ProviderWechatMini 表示微信小程序登录来源。
 	ProviderWechatMini = "wechat_mini"
-	// ProviderAlipayMini 表示支付宝小程序登录来源。
-	ProviderAlipayMini = "alipay_mini"
 )
 
 // Identity 用来描述第三方登录场景下的外部身份信息。

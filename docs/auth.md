@@ -7,18 +7,15 @@
 3. 业务系统根据三方身份查找或创建自己的用户；
 4. 业务系统签发自己的 token / session 响应。
 
-当前内置两个渠道：
+当前内置渠道：
 
 - `auth/wechatmini`
-- `auth/alipaymini`
 
 如果你做的是小程序商城、会员系统、内容平台，通常会直接用到这个模块。
 
 ## 一、核心设计
 
 ### 1. 统一身份模型 `auth.Identity`
-
-第三方登录模块先把渠道侧身份收敛成统一结构：
 
 ```go
 type Identity struct {
@@ -30,14 +27,13 @@ type Identity struct {
 }
 ```
 
-这意味着业务层不需要感知微信或支付宝 SDK 的细节，只需要处理：
+业务侧只需要关心：
 
-- `Provider`：登录来源
-- `UnionID` / `OpenID`：第三方主键
+- `UnionID / OpenID`：第三方主键
 - `PhoneNumber`：若授权拿到了手机号
 - `ClientIP`：来源 IP
 
-### 2. 业务方只实现 `auth.UserHandler`
+### 2. 业务方实现 `auth.UserHandler`
 
 ```go
 type UserHandler interface {
@@ -53,25 +49,7 @@ type UserHandler interface {
 - `CreateUser`：查不到时如何注册用户
 - `GenerateToken`：注册/登录成功后如何发你的业务 token
 
-也就是说：
-
-- 渠道身份解析由 `wd` 负责
-- 你的会员系统、账户系统、注册策略由你负责
-- token 内容与签发方式由你负责
-
-## 二、统一接入流程
-
-无论微信还是支付宝，推荐都按下面流程接：
-
-1. 项目启动时初始化对应 `Service`
-2. 在路由层调用 `auth.Register(...)`
-3. 在 `FindUser` 里按 `UnionID -> OpenID` 顺序查用户
-4. 在 `CreateUser` 里落库并建立第三方身份绑定
-5. 在 `GenerateToken` 里统一复用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)`
-
-这样第三方登录模块和你的业务会员体系边界最清晰。
-
-## 三、微信小程序登录 `auth/wechatmini`
+## 二、微信小程序登录 `auth/wechatmini`
 
 ### 1. 初始化
 
@@ -114,10 +92,10 @@ type LoginRequest struct {
 
 行为分两段：
 
-- 只传 `code`：服务端会先换取 `OpenID/UnionID`，如果业务侧 `FindUser` 查不到用户，会先返回 `open_id`，提示前端继续手机号授权流程
+- 只传 `code`：服务端先换取 `OpenID/UnionID`，若业务侧 `FindUser` 查不到用户，会先返回 `open_id`
 - 同时传 `encrypted_data + iv_str`：服务端会尝试解密手机号，然后调用 `CreateUser`
 
-### 4. Service 额外能力
+### 4. 小程序码能力
 
 除了登录路由，`wechatmini.Service` 还封了小程序码能力：
 
@@ -126,8 +104,6 @@ type LoginRequest struct {
 - `GetUnlimitedCode(code *MiniUnlimitedCode)`
 
 适合在商城分享、商品详情、邀请海报等场景直接复用。
-
-### 5. 小程序码示例
 
 ```go
 code := authwechatmini.NewMiniUnlimitedCode(ctx).
@@ -139,59 +115,9 @@ code := authwechatmini.NewMiniUnlimitedCode(ctx).
 resp, err := svc.GetUnlimitedCode(code)
 ```
 
-## 四、支付宝小程序登录 `auth/alipaymini`
+## 三、推荐的 JWT 结合方式
 
-### 1. 初始化
-
-```go
-svc, err := authalipaymini.New(
-    authalipaymini.Config{
-        AppID:                "2021xxxx",
-        AppPrivateKey:        "private-key",
-        AESKey:               "aes-key-base64",
-        AppPublicKeyFilePath: "./appPublicKey.pem",
-        AliPublicKeyFilePath: "./alipayPublicKey_RSA2.pem",
-        AliRootKeyFilePath:   "./alipayRootCert.crt",
-        SaveHandlerLog:       true,
-    },
-    yourUserHandler,
-)
-```
-
-若已有支付宝客户端：
-
-```go
-svc, err := authalipaymini.NewWithClient(alipayClient, yourUserHandler, true)
-```
-
-### 2. 路由注册
-
-```go
-auth.Register(r.Group("/alipaymini"), svc)
-```
-
-默认会注册：
-
-- `POST /alipaymini/login`
-
-### 3. 请求体
-
-```go
-type LoginRequest struct {
-    Code          string `json:"code" binding:"required"`
-    EncryptedData string `json:"encrypted_data"`
-}
-```
-
-模块内部会：
-
-- 先通过 `code` 换取 `OpenId/UnionId`
-- 若需要注册且前端传了 `EncryptedData`，会尝试解密手机号
-- 最终调用你的 `FindUser / CreateUser / GenerateToken`
-
-## 五、推荐的 JWT 结合方式
-
-认证子包最推荐的 token 签发方式，不是自己手写 JWT，而是统一复用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)`：
+认证子包最推荐的 token 签发方式，是统一复用 `wd.NewGinJWTMiddleware(...).TokenGenerator(...)`：
 
 ```go
 type claims struct {
@@ -215,15 +141,7 @@ jwtMW, err := wd.NewGinJWTMiddleware(
 token, _, err := jwtMW.TokenGenerator(memberData)
 ```
 
-这样你就能保证：
-
-- 小程序登录发的 token
-- 普通账号密码登录发的 token
-- 管理后台 token
-
-在格式、过期时间、Claims 读取方式上保持一致。
-
-## 六、业务侧最佳实践
+## 四、业务侧最佳实践
 
 ### 1. 查人顺序建议
 
@@ -239,22 +157,14 @@ token, _, err := jwtMW.TokenGenerator(memberData)
 
 建议把 `CreateUser` 控制在“最小可注册闭环”内：
 
-- 写用户主表
-- 写三方身份绑定表
-- 返回用户对象
+- 建会员主表
+- 建第三方身份绑定表
+- 补基础昵称/手机号
 
-其他副作用如欢迎券、营销弹窗、埋点等，尽量在异步流程里做。
+更重的逻辑如：
 
-### 3. 登录态和注册态分开记录日志
+- 发欢迎券
+- 发站内信
+- 初始化资产账户
 
-- 登录成功：记录 `provider/openid/user_id`
-- 自动注册：额外记录 `phone_number/unionid`
-- 登录失败：记录失败节点是 `换 session`、`解密手机号`、`发 token` 还是 `业务落库`
-
-## 七、仓库内可参考示例
-
-- `test/projectflow/auth_flow_test.go`
-- `test/projectflow/wechatmini_real_flow_test.go`
-- `test/projectflow/shared_test.go`
-
-如果你要在真实商城里接小程序登录，优先看 `wechatmini_real_flow_test.go`。
+建议放异步任务或注册成功后的业务编排里。
