@@ -432,6 +432,40 @@ if changed {
 
 适合配合 `gorm/gen` 的 `UpdateColumnSimple(...)` 使用。
 
+### 5.2.1 `BuildGenUpdates`：一键生成整组 `gorm/gen` 更新表达式
+
+如果请求结构里的 PATCH 字段较多，可以直接一次性生成更新表达式：
+
+```go
+type UpdateUserReq struct {
+    NickName wd.Field[string]      `json:"nickname" patch:"Nickname"`
+    Email    wd.Field[string]      `json:"email"`
+    Birthday wd.Field[wd.DateOnly] `json:"birthday" patch:"Date"`
+}
+
+updates, err := wd.BuildGenUpdates(req, oldUser, query.User)
+if err != nil {
+    wd.ResponseError(c, err)
+    return
+}
+
+if len(updates) == 0 {
+    wd.ResponseSuccess(c, "无修改内容")
+    return
+}
+
+_, err = query.User.WithContext(c).
+    Where(query.User.ID.Eq(userID)).
+    UpdateColumnSimple(updates...)
+```
+
+规则说明：
+
+- 默认按请求字段名去匹配 `oldModel` 和 `query.User` 的字段名
+- 可以用 `patch:"Nickname"` 这类标签显式指定字段名
+- `oldModel` 允许传 `nil`，此时只要请求中显式传了字段，就会直接生成更新表达式
+- `patch:"-"` 表示跳过该字段，不参与自动构建
+
 ### 5.3 预编译请求结构
 
 `params_precompiled.go` 提供了一组非常实用的请求结构：
