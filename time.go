@@ -215,8 +215,7 @@ func Now() time.Time {
 
 // NowPointer 返回当前时间的指针副本，便于与可选参数兼容。
 func NowPointer() *time.Time {
-	now := Now()
-	return &now
+	return new(Now())
 }
 
 // NowDateTimeString 以标准格式返回当前日期时间字符串。
@@ -630,7 +629,7 @@ func ParseDateTimePointer(value string) *time.Time {
 	if err != nil {
 		return nil
 	}
-	return &parsed
+	return new(parsed)
 }
 
 // ParseRFC3339Pointer 解析 RFC3339 时间并返回指针。
@@ -642,7 +641,7 @@ func ParseRFC3339Pointer(value string) *time.Time {
 	if err != nil {
 		return nil
 	}
-	return &parsed
+	return new(parsed)
 }
 
 // SecondsToDuration 将秒数转换为 duration。
