@@ -1,229 +1,240 @@
 package wd
 
 import (
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
 
 	"gorm.io/gen/field"
+	"gorm.io/gorm/schema"
 )
 
-func PatchUpdateSimple[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, error) {
-	if !patch.Set {
-		return nil, nil
-	}
-	oldInfo := parsePatchOldValue[T](oldValue)
-	if oldInfo.nullable {
-		if len(setNull) == 0 || setNull[0] == nil {
-			if hasPatchColumnMethods(target) {
-				setNull = []func() field.AssignExpr{func() field.AssignExpr {
-					return callPatchColumnNull(target)
-				}}
-			}
-		}
-		if len(setNull) == 0 || setNull[0] == nil {
-			return nil, nil
-		}
-		if !patch.IsSet() {
-			return nil, nil
-		}
-		if oldInfo.isNull && patch.Null {
-			return nil, nil
-		}
-		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
-			return nil, nil
-		}
-		if ok, value := patch.HasValue(); ok {
-			return callPatchTargetValue(target, value)
-		}
-		return setNull[0](), nil
-	}
+type PatchEqualFunc[T any] func(oldValue, newValue T) bool
 
-	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
-		return callPatchTargetValue(target, value)
-	}
-	return nil, nil
+type patchValueTarget[T any] interface {
+	Value(T) field.AssignExpr
 }
 
-// PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回
-func PatchUpdate[T comparable](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
+type patchNullTarget interface {
+	Null() field.AssignExpr
+}
+
+type patchDriverValuerTarget interface {
+	Value(driver.Valuer) field.AssignExpr
+}
+
+type patchSerializerValueTarget interface {
+	Value(schema.SerializerValuerInterface) field.AssignExpr
+}
+
+type patchResolvedTarget[T any] struct {
+	setValue func(T) (field.AssignExpr, error)
+	setNull  func() field.AssignExpr
+}
+
+func PatchUpdateSimple[T any](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, error) {
+	ae, updated, err := patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual[T], firstPatchNullSetter(setNull...))
+	if err != nil || !updated {
+		return nil, err
+	}
+	return ae, nil
+}
+
+// PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回。
+func PatchUpdate[T any](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
+	return patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual[T], firstPatchNullSetter(setNull...))
+}
+
+// PatchUpdateSimpleBy 用来自定义两个值的比较逻辑，适合 decimal、JSON 等需要业务等价判断的类型。
+func PatchUpdateSimpleBy[T any](patch Field[T], oldValue any, target any, equal PatchEqualFunc[T], setNull ...func() field.AssignExpr) (field.AssignExpr, error) {
+	ae, updated, err := patchUpdateWithEqual(patch, oldValue, target, equal, firstPatchNullSetter(setNull...))
+	if err != nil || !updated {
+		return nil, err
+	}
+	return ae, nil
+}
+
+// PatchUpdateBy 用来自定义两个值的比较逻辑，适合 decimal、JSON 等需要业务等价判断的类型。
+func PatchUpdateBy[T any](patch Field[T], oldValue any, target any, equal PatchEqualFunc[T], setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
+	return patchUpdateWithEqual(patch, oldValue, target, equal, firstPatchNullSetter(setNull...))
+}
+
+func patchUpdateWithEqual[T any](patch Field[T], oldValue any, target any, equal PatchEqualFunc[T], setNull func() field.AssignExpr) (field.AssignExpr, bool, error) {
 	if !patch.Set {
 		return nil, false, nil
 	}
-	oldInfo := parsePatchOldValue[T](oldValue)
-	if oldInfo.nullable {
-		if len(setNull) == 0 || setNull[0] == nil {
-			if hasPatchColumnMethods(target) {
-				setNull = []func() field.AssignExpr{func() field.AssignExpr {
-					return callPatchColumnNull(target)
-				}}
-			}
-		}
-		if len(setNull) == 0 || setNull[0] == nil {
-			return nil, false, errors.New("可空字段必须提供 setNull")
-		}
-		if !patch.IsSet() {
-			return nil, false, nil
-		}
-		if oldInfo.isNull && patch.Null {
-			return nil, false, nil
-		}
-		if !oldInfo.isNull && !patch.Null && oldInfo.value == patch.Value {
-			return nil, false, nil
-		}
-		if ok, value := patch.HasValue(); ok {
-			d, err := callPatchTargetValue(target, value)
-			if err != nil {
-				return nil, false, err
-			}
-			return d, true, nil
-		}
-		return setNull[0](), true, nil
+
+	if equal == nil {
+		equal = defaultPatchEqual[T]
 	}
 
-	if ok, value := patch.HasValue(); ok && value != oldInfo.value {
-		d, err := callPatchTargetValue(target, value)
+	oldInfo, err := parsePatchOldValue[T](oldValue)
+	if err != nil {
+		return nil, false, err
+	}
+
+	resolvedTarget, err := resolvePatchTarget[T](target)
+	if err != nil {
+		return nil, false, err
+	}
+	if setNull != nil {
+		resolvedTarget.setNull = setNull
+	}
+
+	if oldInfo.nullable {
+		if patch.Null {
+			if oldInfo.isNull {
+				return nil, false, nil
+			}
+			if resolvedTarget.setNull == nil {
+				return nil, false, errors.New("可空字段必须提供 setNull 或目标字段支持 Null()")
+			}
+			return resolvedTarget.setNull(), true, nil
+		}
+
+		ok, value := patch.HasValue()
+		if !ok {
+			return nil, false, nil
+		}
+		if !oldInfo.isNull && equal(oldInfo.value, value) {
+			return nil, false, nil
+		}
+		assignExpr, err := resolvedTarget.setValue(value)
 		if err != nil {
 			return nil, false, err
 		}
-		return d, true, nil
+		return assignExpr, true, nil
 	}
-	return nil, false, nil
+
+	ok, value := patch.HasValue()
+	if !ok {
+		return nil, false, nil
+	}
+	if equal(oldInfo.value, value) {
+		return nil, false, nil
+	}
+
+	assignExpr, err := resolvedTarget.setValue(value)
+	if err != nil {
+		return nil, false, err
+	}
+	return assignExpr, true, nil
 }
 
-func callPatchTargetValue[T any](target any, value T) (field.AssignExpr, error) {
-	if reflect.ValueOf(target).Kind() == reflect.Func {
-		return callPatchSetValue(target, value)
-	}
-	return callPatchColumnValue(target, value)
-}
-
-func callPatchSetValue[T any](setValue any, value T) (field.AssignExpr, error) {
-	setter := reflect.ValueOf(setValue)
-	if !setter.IsValid() || setter.Kind() != reflect.Func {
-		return nil, errors.New("setValue 必须是函数")
+func resolvePatchTarget[T any](target any) (patchResolvedTarget[T], error) {
+	if target == nil {
+		return patchResolvedTarget[T]{}, errors.New("target 不能为空")
 	}
 
-	setterType := setter.Type()
-	if setterType.NumIn() != 1 || setterType.NumOut() != 1 {
-		return nil, errors.New("setValue 必须是单入参单返回值函数")
+	resolved := patchResolvedTarget[T]{
+		setNull: patchNullSetterFromTarget(target),
 	}
 
-	arg := reflect.ValueOf(value)
-	paramType := setterType.In(0)
-	if !arg.Type().AssignableTo(paramType) {
-		if !arg.Type().ConvertibleTo(paramType) {
-			return nil, fmt.Errorf("setValue 参数类型不匹配: need=%s got=%s", paramType, arg.Type())
+	switch typedTarget := target.(type) {
+	case func(T) field.AssignExpr:
+		resolved.setValue = func(value T) (field.AssignExpr, error) {
+			return typedTarget(value), nil
 		}
-		arg = arg.Convert(paramType)
-	}
-
-	result := setter.Call([]reflect.Value{arg})
-	assignExpr, ok := result[0].Interface().(field.AssignExpr)
-	if !ok {
-		return nil, errors.New("setValue 返回值必须实现 field.AssignExpr")
-	}
-	return assignExpr, nil
-}
-
-func callPatchColumnValue[T any](column any, value T) (field.AssignExpr, error) {
-	columnValue := reflect.ValueOf(column)
-	if !columnValue.IsValid() {
-		return nil, errors.New("column 不能为空")
-	}
-	method := columnValue.MethodByName("Value")
-	if !method.IsValid() {
-		return nil, errors.New("column 必须包含 Value 方法")
-	}
-	return callPatchMethod(method, value), nil
-}
-
-func callPatchColumnNull(column any) field.AssignExpr {
-	columnValue := reflect.ValueOf(column)
-	if !columnValue.IsValid() {
-		panic("column 不能为空")
-	}
-	method := columnValue.MethodByName("Null")
-	if !method.IsValid() {
-		panic("column 必须包含 Null 方法")
-	}
-	if method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
-		panic("column.Null 方法签名不合法")
-	}
-	result := method.Call(nil)
-	assignExpr, ok := result[0].Interface().(field.AssignExpr)
-	if !ok {
-		panic("column.Null 返回值必须实现 field.AssignExpr")
-	}
-	return assignExpr
-}
-
-func hasPatchColumnMethods(column any) bool {
-	columnValue := reflect.ValueOf(column)
-	if !columnValue.IsValid() || columnValue.Kind() == reflect.Func {
-		return false
-	}
-	return columnValue.MethodByName("Value").IsValid() && columnValue.MethodByName("Null").IsValid()
-}
-
-func callPatchMethod[T any](method reflect.Value, value T) field.AssignExpr {
-	methodType := method.Type()
-	if methodType.NumIn() != 1 || methodType.NumOut() != 1 {
-		panic("方法签名必须是单入参单返回值")
-	}
-
-	arg := reflect.ValueOf(value)
-	paramType := methodType.In(0)
-	if !arg.Type().AssignableTo(paramType) {
-		if !arg.Type().ConvertibleTo(paramType) {
-			panic(fmt.Sprintf("方法参数类型不匹配: need=%s got=%s", paramType, arg.Type()))
+		return resolved, nil
+	case patchValueTarget[T]:
+		resolved.setValue = func(value T) (field.AssignExpr, error) {
+			return typedTarget.Value(value), nil
 		}
-		arg = arg.Convert(paramType)
+		return resolved, nil
+	case patchDriverValuerTarget:
+		resolved.setValue = func(value T) (field.AssignExpr, error) {
+			valuer, ok := patchAsDriverValuer(value)
+			if !ok {
+				return nil, fmt.Errorf("target.Value 需要 driver.Valuer，但当前类型 %s 不支持", patchTypeName[T]())
+			}
+			return typedTarget.Value(valuer), nil
+		}
+		return resolved, nil
+	case patchSerializerValueTarget:
+		resolved.setValue = func(value T) (field.AssignExpr, error) {
+			serializerValue, ok := patchAsSerializerValue(value)
+			if !ok {
+				return nil, fmt.Errorf("target.Value 需要 schema.SerializerValuerInterface，但当前类型 %s 不支持", patchTypeName[T]())
+			}
+			return typedTarget.Value(serializerValue), nil
+		}
+		return resolved, nil
+	default:
+		return patchResolvedTarget[T]{}, fmt.Errorf("target 类型不支持: %T", target)
 	}
-
-	result := method.Call([]reflect.Value{arg})
-	assignExpr, ok := result[0].Interface().(field.AssignExpr)
-	if !ok {
-		panic("方法返回值必须实现 field.AssignExpr")
-	}
-	return assignExpr
 }
 
-type patchOldValueInfo[T comparable] struct {
+func patchNullSetterFromTarget(target any) func() field.AssignExpr {
+	nullableTarget, ok := target.(patchNullTarget)
+	if !ok {
+		return nil
+	}
+	return nullableTarget.Null
+}
+
+func patchAsDriverValuer[T any](value T) (driver.Valuer, bool) {
+	if valuer, ok := any(value).(driver.Valuer); ok {
+		return valuer, true
+	}
+	if valuer, ok := any(&value).(driver.Valuer); ok {
+		return valuer, true
+	}
+	return nil, false
+}
+
+func patchAsSerializerValue[T any](value T) (schema.SerializerValuerInterface, bool) {
+	if serializerValue, ok := any(value).(schema.SerializerValuerInterface); ok {
+		return serializerValue, true
+	}
+	if serializerValue, ok := any(&value).(schema.SerializerValuerInterface); ok {
+		return serializerValue, true
+	}
+	return nil, false
+}
+
+type patchOldValueInfo[T any] struct {
 	value    T
 	nullable bool
 	isNull   bool
 }
 
-func parsePatchOldValue[T comparable](oldValue any) patchOldValueInfo[T] {
-	value := reflect.ValueOf(oldValue)
-	if !value.IsValid() {
-		panic("oldValue 不能为空，请传入模型字段旧值")
+func parsePatchOldValue[T any](oldValue any) (patchOldValueInfo[T], error) {
+	if oldValue == nil {
+		return patchOldValueInfo[T]{
+			nullable: true,
+			isNull:   true,
+		}, nil
 	}
 
-	if value.Kind() == reflect.Ptr {
-		var info patchOldValueInfo[T]
-		info.nullable = true
-		if value.IsNil() {
+	switch value := oldValue.(type) {
+	case T:
+		return patchOldValueInfo[T]{value: value}, nil
+	case *T:
+		info := patchOldValueInfo[T]{nullable: true}
+		if value == nil {
 			info.isNull = true
-			return info
+			return info, nil
 		}
-		info.value = castPatchOldValue[T](value.Elem())
-		return info
-	}
-
-	return patchOldValueInfo[T]{
-		value: castPatchOldValue[T](value),
+		info.value = *value
+		return info, nil
+	default:
+		return patchOldValueInfo[T]{}, fmt.Errorf("oldValue 类型不匹配: need=%s 或 *%s got=%T", patchTypeName[T](), patchTypeName[T](), oldValue)
 	}
 }
 
-func castPatchOldValue[T any](value reflect.Value) T {
-	targetType := reflect.TypeOf((*T)(nil)).Elem()
-	if !value.Type().AssignableTo(targetType) {
-		if !value.Type().ConvertibleTo(targetType) {
-			panic(fmt.Sprintf("oldValue 类型不匹配: need=%s got=%s", targetType, value.Type()))
-		}
-		value = value.Convert(targetType)
+func defaultPatchEqual[T any](oldValue, newValue T) bool {
+	return reflect.DeepEqual(oldValue, newValue)
+}
+
+func firstPatchNullSetter(setNull ...func() field.AssignExpr) func() field.AssignExpr {
+	if len(setNull) == 0 || setNull[0] == nil {
+		return nil
 	}
-	return value.Interface().(T)
+	return setNull[0]
+}
+
+func patchTypeName[T any]() string {
+	targetType := reflect.TypeOf((*T)(nil)).Elem()
+	return targetType.String()
 }
