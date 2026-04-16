@@ -2,6 +2,7 @@ package wd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,6 +13,6 @@ func MiddlewareRequestTime() gin.HandlerFunc {
 		startTime := Now()
 		c.Set(CtxKeyRequestTime, startTime)
 		c.Next()
-		c.Header("response_time", fmt.Sprintf("%dms", Now().Sub(startTime).Milliseconds()))
+		c.Header("response_time", fmt.Sprintf("%dms", time.Since(startTime).Milliseconds()))
 	}
 }

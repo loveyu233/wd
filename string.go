@@ -2,8 +2,6 @@ package wd
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -38,18 +36,16 @@ func ConvertStringToUint32(str string) (uint32, error) {
 		return 0, fmt.Errorf("输入字符串为空")
 	}
 
-	// 检查是否全为数字
-	for _, char := range str {
+	var result uint64
+	for i := range len(str) {
+		char := str[i]
 		if char < '0' || char > '9' {
 			return 0, fmt.Errorf("字符串包含非数字字符: %s", str)
 		}
-	}
-
-	// 使用strconv.ParseUint自动处理前导零
-	// ParseUint会自动去除前导零并转换为数字
-	result, err := strconv.ParseUint(str, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("转换失败: %w", err)
+		result = result*10 + uint64(char-'0')
+		if result > uint64(^uint32(0)) {
+			return 0, fmt.Errorf("转换失败: 数值超出 uint32 范围")
+		}
 	}
 
 	return uint32(result), nil
@@ -66,18 +62,11 @@ func ConvertStringToUint32Simple(str string) uint32 {
 
 // GetGenderFromIDCard 用来根据身份证号码推断性别。
 func GetGenderFromIDCard(idcard string) string {
-	if !ValidateChineseIDCard(idcard) {
+	idcard = normalizeChineseIDCard(idcard)
+	if !isValidNormalizedChineseIDCard(idcard) {
 		return "未知"
 	}
-	// 获取第17位数字(索引为16)
-	// 中国身份证第17位数字表示性别：奇数为男性，偶数为女性
-	genderDigit := idcard[16:17]
-
-	// 将字符转换为数字
-	digit, err := strconv.Atoi(genderDigit)
-	if err != nil {
-		return "无效身份证号"
-	}
+	digit := idcard[16] - '0'
 
 	// 判断奇偶性
 	if digit%2 == 0 {
@@ -88,25 +77,15 @@ func GetGenderFromIDCard(idcard string) string {
 
 // ValidateChineseMobile 用来校验中国大陆手机号格式。
 func ValidateChineseMobile(mobile string) bool {
-	// 去除空格和特殊字符
-	mobile = strings.ReplaceAll(mobile, " ", "")
-	mobile = strings.ReplaceAll(mobile, "-", "")
-
-	// 中国手机号正则表达式
-	// 1开头，第二位是3-9，总共11位数字
-	pattern := `^1[3-9]\d{9}$`
-	matched, _ := regexp.MatchString(pattern, mobile)
-	return matched
+	return isValidNormalizedChineseMobile(normalizeChineseMobile(mobile))
 }
 
 // MaskMobileCustom 用来按自定义规则脱敏手机号。
 func MaskMobileCustom(mobile string, prefixLen, suffixLen int, maskChar rune) string {
-	// 去除空格和特殊字符
-	mobile = strings.ReplaceAll(mobile, " ", "")
-	mobile = strings.ReplaceAll(mobile, "-", "")
+	mobile = normalizeChineseMobile(mobile)
 
 	// 如果不是有效的手机号格式，返回原字符串
-	if !ValidateChineseMobile(mobile) {
+	if !isValidNormalizedChineseMobile(mobile) {
 		return mobile
 	}
 
@@ -127,50 +106,15 @@ func MaskMobileCustom(mobile string, prefixLen, suffixLen int, maskChar rune) st
 
 // ValidateChineseIDCard 用来校验身份证号是否合法。
 func ValidateChineseIDCard(idCard string) bool {
-	// 去除空格
-	idCard = strings.ReplaceAll(idCard, " ", "")
-	idCard = strings.ToUpper(idCard)
-
-	// 检查长度，必须是18位
-	if len(idCard) != 18 {
-		return false
-	}
-
-	// 检查前17位是否都是数字
-	for i := range 17 {
-		if idCard[i] < '0' || idCard[i] > '9' {
-			return false
-		}
-	}
-
-	// 检查最后一位（校验码）
-	lastChar := idCard[17]
-	if lastChar != 'X' && (lastChar < '0' || lastChar > '9') {
-		return false
-	}
-
-	// 计算校验码
-	weights := []int{7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2}
-	checkCodes := []byte{'1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'}
-
-	sum := 0
-	for i := range 17 {
-		digit, _ := strconv.Atoi(string(idCard[i]))
-		sum += digit * weights[i]
-	}
-
-	expectedCheckCode := checkCodes[sum%11]
-	return byte(lastChar) == expectedCheckCode
+	return isValidNormalizedChineseIDCard(normalizeChineseIDCard(idCard))
 }
 
 // MaskMobile 用来以默认规则对手机号进行脱敏。
 func MaskMobile(mobile string) string {
-	// 去除空格和特殊字符
-	mobile = strings.ReplaceAll(mobile, " ", "")
-	mobile = strings.ReplaceAll(mobile, "-", "")
+	mobile = normalizeChineseMobile(mobile)
 
 	// 如果不是有效的手机号格式，返回原字符串
-	if !ValidateChineseMobile(mobile) {
+	if !isValidNormalizedChineseMobile(mobile) {
 		return mobile
 	}
 
@@ -180,12 +124,10 @@ func MaskMobile(mobile string) string {
 
 // MaskIDCardCustom 用来自定义身份证号码的脱敏方案。
 func MaskIDCardCustom(idCard string, prefixLen, suffixLen int, maskChar rune) string {
-	// 去除空格
-	idCard = strings.ReplaceAll(idCard, " ", "")
-	idCard = strings.ToUpper(idCard)
+	idCard = normalizeChineseIDCard(idCard)
 
 	// 如果不是有效的身份证号格式，返回原字符串
-	if !ValidateChineseIDCard(idCard) {
+	if !isValidNormalizedChineseIDCard(idCard) {
 		return idCard
 	}
 
@@ -206,12 +148,10 @@ func MaskIDCardCustom(idCard string, prefixLen, suffixLen int, maskChar rune) st
 
 // MaskIDCardBirthday 用来隐藏身份证中的生日与顺序码。
 func MaskIDCardBirthday(idCard string) string {
-	// 去除空格
-	idCard = strings.ReplaceAll(idCard, " ", "")
-	idCard = strings.ToUpper(idCard)
+	idCard = normalizeChineseIDCard(idCard)
 
 	// 如果不是有效的身份证号格式，返回原字符串
-	if !ValidateChineseIDCard(idCard) {
+	if !isValidNormalizedChineseIDCard(idCard) {
 		return idCard
 	}
 
@@ -222,12 +162,10 @@ func MaskIDCardBirthday(idCard string) string {
 
 // MaskIDCard 用来以固定规则遮蔽身份证号。
 func MaskIDCard(idCard string) string {
-	// 去除空格
-	idCard = strings.ReplaceAll(idCard, " ", "")
-	idCard = strings.ToUpper(idCard)
+	idCard = normalizeChineseIDCard(idCard)
 
 	// 如果不是有效的身份证号格式，返回原字符串
-	if !ValidateChineseIDCard(idCard) {
+	if !isValidNormalizedChineseIDCard(idCard) {
 		return idCard
 	}
 
@@ -287,4 +225,99 @@ func ReplacePathParamsFast(path string) string {
 	}
 
 	return result.String()
+}
+
+func normalizeChineseMobile(mobile string) string {
+	needsNormalize := false
+	for i := range len(mobile) {
+		switch mobile[i] {
+		case ' ', '-':
+			needsNormalize = true
+		}
+		if needsNormalize {
+			break
+		}
+	}
+	if !needsNormalize {
+		return mobile
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(mobile))
+	for i := range len(mobile) {
+		switch mobile[i] {
+		case ' ', '-':
+			continue
+		default:
+			builder.WriteByte(mobile[i])
+		}
+	}
+	return builder.String()
+}
+
+func isValidNormalizedChineseMobile(mobile string) bool {
+	if len(mobile) != 11 {
+		return false
+	}
+	if mobile[0] != '1' || mobile[1] < '3' || mobile[1] > '9' {
+		return false
+	}
+	for i := 2; i < len(mobile); i++ {
+		if mobile[i] < '0' || mobile[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeChineseIDCard(idCard string) string {
+	needsNormalize := false
+	for i := range len(idCard) {
+		ch := idCard[i]
+		if ch == ' ' || ('a' <= ch && ch <= 'z') {
+			needsNormalize = true
+			break
+		}
+	}
+	if !needsNormalize {
+		return idCard
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(idCard))
+	for i := range len(idCard) {
+		ch := idCard[i]
+		if ch == ' ' {
+			continue
+		}
+		if 'a' <= ch && ch <= 'z' {
+			ch = ch - 'a' + 'A'
+		}
+		builder.WriteByte(ch)
+	}
+	return builder.String()
+}
+
+func isValidNormalizedChineseIDCard(idCard string) bool {
+	if len(idCard) != 18 {
+		return false
+	}
+	for i := range 17 {
+		if idCard[i] < '0' || idCard[i] > '9' {
+			return false
+		}
+	}
+	lastChar := idCard[17]
+	if lastChar != 'X' && (lastChar < '0' || lastChar > '9') {
+		return false
+	}
+
+	weights := [...]int{7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2}
+	checkCodes := [...]byte{'1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'}
+
+	sum := 0
+	for i := range 17 {
+		sum += int(idCard[i]-'0') * weights[i]
+	}
+	return lastChar == checkCodes[sum%11]
 }

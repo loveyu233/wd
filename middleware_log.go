@@ -476,7 +476,7 @@ func MiddlewareLogger(mc MiddlewareLogConfig) gin.HandlerFunc {
 				float64(m.Duration.Microseconds())/1000)
 		}
 
-		duration := Now().Sub(startTime)
+		duration := time.Since(startTime)
 		entrySnapshot := requestLogger.Entries()
 		requestLogger.SetDurationMs(duration.Milliseconds())
 		requestLogger.SetStatusCode(c.Writer.Status())
