@@ -30,6 +30,13 @@ func (d DateOnly) Type() string {
 	return "date_only"
 }
 
+// MonthDay 只有月日的类型 (MM-DD)，数据库中按固定年份保存。
+type MonthDay time.Time
+
+func (d MonthDay) Type() string {
+	return "month_day"
+}
+
 // TimeOnly 只有时间的类型，包含秒 (HH:MM:SS)
 type TimeOnly time.Time
 
@@ -219,6 +226,43 @@ func (d *DateOnly) UnmarshalJSON(data []byte) error {
 // UnmarshalParam 用来解析 form/query 参数到 DateOnly。
 func (d *DateOnly) UnmarshalParam(param string) error {
 	return unmarshalCustomTimeParam(d, param, parseDateOnlyString)
+}
+
+// ========== MonthDay 序列化 ==========
+
+// Scan 用来从数据库读取 MonthDay，兼容 DATE 列返回的完整日期字符串。
+func (m *MonthDay) Scan(v interface{}) error {
+	return scanCustomTime(m, v, parseMonthDayStoredString, normalizeMonthDayValue, "月日")
+}
+
+// Value 用来把 MonthDay 按固定年份格式化为数据库值。
+func (m MonthDay) Value() (driver.Value, error) {
+	return valueSQLTime(m, CSTLayoutDate, normalizeMonthDayValue)
+}
+
+// String 用来输出 MM-DD 字符串。
+func (m MonthDay) String() string {
+	return formatSQLTime(m, CSTLayoutMonthDay, normalizeMonthDayValue)
+}
+
+// Format 用来自定义 MonthDay 的输出格式。
+func (m MonthDay) Format(layout string) string {
+	return formatSQLTime(m, layout, normalizeMonthDayValue)
+}
+
+// MarshalJSON 用来把 MonthDay 序列化为 JSON。
+func (m MonthDay) MarshalJSON() ([]byte, error) {
+	return marshalSQLTime(m, CSTLayoutMonthDay, normalizeMonthDayValue)
+}
+
+// UnmarshalJSON 用来从 JSON 字符串解析 MonthDay。
+func (m *MonthDay) UnmarshalJSON(data []byte) error {
+	return unmarshalCustomTime(m, data, parseMonthDayString)
+}
+
+// UnmarshalParam 用来解析 form/query 参数到 MonthDay。
+func (m *MonthDay) UnmarshalParam(param string) error {
+	return unmarshalCustomTimeParam(m, param, parseMonthDayString)
 }
 
 // ========== TimeOnly 序列化 ==========

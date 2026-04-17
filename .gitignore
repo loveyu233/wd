@@ -36,3 +36,4 @@ test
 /.claude/settings.local.json
 
 *_test*
+!month_day_test.go

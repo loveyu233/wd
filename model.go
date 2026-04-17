@@ -25,6 +25,16 @@ type StructGormIDPtrDateOnly struct {
 	DateOnly *DateOnly `gorm:"column:date_only"`
 }
 
+type StructGormIDMonthDay struct {
+	ID       uint64   `gorm:"column:id"`
+	MonthDay MonthDay `gorm:"column:month_day"`
+}
+
+type StructGormIDPtrMonthDay struct {
+	ID       uint64    `gorm:"column:id"`
+	MonthDay *MonthDay `gorm:"column:month_day"`
+}
+
 type StructGormIDTimeOnly struct {
 	ID       uint64   `gorm:"column:id"`
 	TimeOnly TimeOnly `gorm:"column:time_only"`

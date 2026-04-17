@@ -18,7 +18,7 @@ var (
 type timeNormalizer func(time.Time) time.Time
 type stringTimeParser func(string) (time.Time, error)
 type customTimeType interface {
-	DateTime | DateOnly | TimeOnly | TimeHM
+	DateTime | DateOnly | MonthDay | TimeOnly | TimeHM
 }
 type timeValuer interface {
 	Time() time.Time
@@ -29,6 +29,7 @@ const (
 	CSTLayoutChinese          = "2006年01月02日 15:04:05"
 	CSTLayoutPoint            = "2006.01.02 15:04:05"
 	CSTLayoutDate             = "2006-01-02"
+	CSTLayoutMonthDay         = "01-02"
 	CSTLayoutDateChinese      = "2006年01月02日"
 	CSTLayoutDatePoint        = "2006.01.02"
 	CSTLayoutTime             = "15:04:05"
@@ -45,6 +46,8 @@ const (
 
 	DayStartTimeStr = "00:00:00"
 	DayEndTimeStr   = "23:59:59"
+
+	monthDayStoredYear = 2000
 )
 
 // init 初始化默认的上海时区配置。
@@ -60,6 +63,10 @@ func init() {
 
 func buildDateOnlyTime(year int, month time.Month, day int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, ShangHaiTimeLocation)
+}
+
+func buildMonthDayTime(month time.Month, day int) time.Time {
+	return buildDateOnlyTime(monthDayStoredYear, month, day)
 }
 
 func buildTimeOnlyTime(hour, minute, second, nanosecond int) time.Time {
@@ -91,6 +98,14 @@ func normalizeDateOnlyValue(value time.Time) time.Time {
 		return time.Time{}
 	}
 	return buildDateOnlyTime(value.Year(), value.Month(), value.Day())
+}
+
+func normalizeMonthDayValue(value time.Time) time.Time {
+	value = normalizeToShanghai(value)
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return buildMonthDayTime(value.Month(), value.Day())
 }
 
 func normalizeTimeOnlyValue(value time.Time) time.Time {
@@ -147,6 +162,21 @@ func parseDateOnlyString(value string) (time.Time, error) {
 		CSTLayoutDate,
 		normalizeDateOnlyValue,
 	)
+}
+
+func parseMonthDayString(value string) (time.Time, error) {
+	return parseStringValue(
+		value,
+		CSTLayoutMonthDay,
+		normalizeMonthDayValue,
+	)
+}
+
+func parseMonthDayStoredString(value string) (time.Time, error) {
+	if strings.Count(strings.TrimSpace(value), "-") == 2 {
+		return parseDateOnlyString(value)
+	}
+	return parseMonthDayString(value)
 }
 
 func parseTimeOnlyString(value string) (time.Time, error) {
@@ -243,6 +273,11 @@ func NowAsDateOnly() DateOnly {
 	return ToDateOnly(Now())
 }
 
+// NowAsMonthDay 返回当天的月日部分。
+func NowAsMonthDay() MonthDay {
+	return ToMonthDay(Now())
+}
+
 // NowAsTimeOnly 返回当前时间的 TimeOnly 封装类型。
 func NowAsTimeOnly() TimeOnly {
 	return ToTimeOnly(Now())
@@ -261,6 +296,11 @@ func ToDateTime(t time.Time) DateTime {
 // ToDateOnly 将 time.Time 转为 DateOnly，只保留日期部分。
 func ToDateOnly(t time.Time) DateOnly {
 	return DateOnly(normalizeDateOnlyValue(t))
+}
+
+// ToMonthDay 将 time.Time 转为 MonthDay，只保留月日并使用固定年份。
+func ToMonthDay(t time.Time) MonthDay {
+	return MonthDay(normalizeMonthDayValue(t))
 }
 
 // ToTimeOnly 将 time.Time 转为 TimeOnly，只保留时间部分。
@@ -364,6 +404,48 @@ func (d DateOnly) FormatRelativeDate() string {
 // AddDays 用来在日期上增加或减少天数。
 func (d DateOnly) AddDays(days int) DateOnly {
 	return addDateToCustomTime[DateOnly](d, 0, 0, days, ToDateOnly)
+}
+
+// ========== MonthDay ==========
+
+// NewMonthDay 用来创建只包含月日的值。
+func NewMonthDay(month time.Month, day int) MonthDay {
+	return ToMonthDay(buildMonthDayTime(month, day))
+}
+
+// NewMonthDayString 用来从 MM-DD 字符串解析 MonthDay。
+func NewMonthDayString(value string) (*MonthDay, error) {
+	return newParsedTimeValue[MonthDay](value, parseMonthDayString, ToMonthDay)
+}
+
+// ToDateTime 用来把 MonthDay 转换回带固定年份的 DateTime。
+func (m MonthDay) ToDateTime() DateTime {
+	return ToDateTime(m.Time())
+}
+
+// ToDateOnly 用来把 MonthDay 转换成带固定年份的 DateOnly。
+func (m MonthDay) ToDateOnly() DateOnly {
+	return ToDateOnly(m.Time())
+}
+
+// ToTimeOnly 用来把 MonthDay 视作仅有时间的类型。
+func (m MonthDay) ToTimeOnly() TimeOnly {
+	return ToTimeOnly(time.Time(m))
+}
+
+// ToTimeHM 用来把 MonthDay 转成小时分钟类型。
+func (m MonthDay) ToTimeHM() TimeHM {
+	return ToTimeHM(time.Time(m))
+}
+
+// Time 用来返回带固定年份的标准库 time.Time 表示。
+func (m MonthDay) Time() time.Time {
+	return normalizeMonthDayValue(time.Time(m))
+}
+
+// IsZero 用来判断 MonthDay 是否为零值。
+func (m MonthDay) IsZero() bool {
+	return isZeroCustomTime(m)
 }
 
 // ========== TimeOnly ==========
@@ -542,6 +624,15 @@ func ParseDateOnly(value string) (DateOnly, error) {
 		return DateOnly{}, err
 	}
 	return ToDateOnly(parsed), nil
+}
+
+// ParseMonthDay 解析月日字符串为 MonthDay。
+func ParseMonthDay(value string) (MonthDay, error) {
+	parsed, err := parseMonthDayString(value)
+	if err != nil {
+		return MonthDay{}, err
+	}
+	return ToMonthDay(parsed), nil
 }
 
 // ParseTimeClock 解析时间字符串为 time.Time。

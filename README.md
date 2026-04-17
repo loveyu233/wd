@@ -37,7 +37,7 @@
 | 定时/权限/搜索 | `cron_task.go` `casbin.go` `es.go` | 分布式定时任务、RBAC、Elasticsearch 批量写入 | `InitCronJob` `InitCasbin` `InitEs` |
 | 短信服务 | `sms.go` | 阿里云短信发送能力 | `NewSMS` `NewSMSWithAccessKey` `NewSMSWithClient` |
 | Excel 工具 | `excel_export.go` `excel_mapper.go` `excel_math.go` | Excel 导出、导入、坐标换算 | `InitExcelExporter` `InitExcelMapper` |
-| 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
+| 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`MonthDay`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
 | 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、Diff 等 | 各文件导出函数 |
 
 ## 专题文档
@@ -700,6 +700,7 @@ wd.InsDB.Gen(
 
 - `wd.DateTime`：`YYYY-MM-DD HH:MM:SS`
 - `wd.DateOnly`：`YYYY-MM-DD`
+- `wd.MonthDay`：`MM-DD`，数据库按固定年份 `2000-MM-DD` 保存
 - `wd.TimeOnly`：`HH:MM:SS`
 - `wd.TimeHM`：`HH:MM`
 
@@ -708,6 +709,7 @@ wd.InsDB.Gen(
 ```go
 type User struct {
     Birthday wd.DateOnly `json:"birthday"`
+    Festival wd.MonthDay `json:"festival"`
     StartAt  wd.DateTime `json:"start_at"`
 }
 ```
@@ -715,9 +717,10 @@ type User struct {
 ### 7.2 常用时间函数
 
 - `wd.Now()`
-- `wd.NowAsDateTime()` / `wd.NowAsDateOnly()`
+- `wd.NowAsDateTime()` / `wd.NowAsDateOnly()` / `wd.NowAsMonthDay()`
 - `wd.ParseDateTimeValue(str)`
 - `wd.NewDateOnlyString("2026-04-15")`
+- `wd.NewMonthDayString("04-15")`
 - `wd.NewTimeHMString("18:30")`
 - `wd.FormatDateTime(t)`
 - `wd.TodayRange()` / `wd.YesterdayRange()`
@@ -727,6 +730,7 @@ type User struct {
 ### 7.3 典型场景
 
 - 数据库模型字段直接用 `wd.DateOnly` / `wd.DateTime`
+- 只关心月日但数据库仍想使用 `DATE` 列时，直接用 `wd.MonthDay`
 - 查询参数里直接绑定 `ReqRange[wd.DateOnly]`
 - 排班、营业时间、预约时间冲突判断用 `TimeRange`
 
@@ -1198,8 +1202,8 @@ err := wd.RPost(
 
 | 文件 | 主要 API |
 | --- | --- |
-| `sql_type.go` | `DateTime`、`DateOnly`、`TimeOnly`、`TimeHM` |
-| `time.go` | `Now`、`NowAsDateTime`、`ParseDateTimeValue`、`NewDateOnlyString`、`TodayRange`、`CurrentMonthRange`、`HasTimeConflict` |
+| `sql_type.go` | `DateTime`、`DateOnly`、`MonthDay`、`TimeOnly`、`TimeHM` |
+| `time.go` | `Now`、`NowAsDateTime`、`ParseDateTimeValue`、`NewDateOnlyString`、`NewMonthDayString`、`TodayRange`、`CurrentMonthRange`、`HasTimeConflict` |
 | `excel_export.go` | `InitExcelExporter`、`ExportToFile`、`ExportToBuffer`、`ExportToExcelizeFile`、`GetStats` |
 | `excel_mapper.go` | `InitExcelMapper`、`MapToStructs`、`GetErrors`、`ClearErrors` |
 | `excel_math.go` | `ExcelGetPosition`、`ExcelGetPositionBatch`、`ExcelColumnToIndex`、`ExcelParsePosition` |
