@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -254,12 +253,6 @@ func ConvertToAppError(err error) *AppError {
 	case ErrInvalidField(err):
 		return MsgErrDatabase("数据处理失败，请检查输入", err)
 	case ErrInvalidTransaction(err):
-		return MsgErrDatabase("服务异常，请稍后重试", err)
-	}
-
-	// 处理mysql特定错误
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
 		return MsgErrDatabase("服务异常，请稍后重试", err)
 	}
 
