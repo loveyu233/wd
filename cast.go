@@ -3,6 +3,7 @@ package wd
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -140,22 +141,46 @@ func castBool(value any) (bool, error) {
 
 func castInt(value any) (int, error) {
 	i64, err := castInt64(value)
-	return int(i64), err
+	if err != nil {
+		return 0, err
+	}
+	if strconv.IntSize == 32 && (i64 < math.MinInt32 || i64 > math.MaxInt32) {
+		return 0, fmt.Errorf("值 %d 超出 int 范围", i64)
+	}
+	return int(i64), nil
 }
 
 func castInt8(value any) (int8, error) {
 	i64, err := castInt64(value)
-	return int8(i64), err
+	if err != nil {
+		return 0, err
+	}
+	if i64 < math.MinInt8 || i64 > math.MaxInt8 {
+		return 0, fmt.Errorf("值 %d 超出 int8 范围", i64)
+	}
+	return int8(i64), nil
 }
 
 func castInt16(value any) (int16, error) {
 	i64, err := castInt64(value)
-	return int16(i64), err
+	if err != nil {
+		return 0, err
+	}
+	if i64 < math.MinInt16 || i64 > math.MaxInt16 {
+		return 0, fmt.Errorf("值 %d 超出 int16 范围", i64)
+	}
+	return int16(i64), nil
 }
 
 func castInt32(value any) (int32, error) {
 	i64, err := castInt64(value)
-	return int32(i64), err
+	if err != nil {
+		return 0, err
+	}
+	if i64 < math.MinInt32 || i64 > math.MaxInt32 {
+		return 0, fmt.Errorf("值 %d 超出 int32 范围", i64)
+	}
+	return int32(i64), nil
 }
 
 func castInt64(value any) (int64, error) {
@@ -173,22 +198,46 @@ func castInt64(value any) (int64, error) {
 
 func castUint(value any) (uint, error) {
 	u64, err := castUint64(value)
-	return uint(u64), err
+	if err != nil {
+		return 0, err
+	}
+	if strconv.IntSize == 32 && u64 > math.MaxUint32 {
+		return 0, fmt.Errorf("值 %d 超出 uint 范围", u64)
+	}
+	return uint(u64), nil
 }
 
 func castUint8(value any) (uint8, error) {
 	u64, err := castUint64(value)
-	return uint8(u64), err
+	if err != nil {
+		return 0, err
+	}
+	if u64 > math.MaxUint8 {
+		return 0, fmt.Errorf("值 %d 超出 uint8 范围", u64)
+	}
+	return uint8(u64), nil
 }
 
 func castUint16(value any) (uint16, error) {
 	u64, err := castUint64(value)
-	return uint16(u64), err
+	if err != nil {
+		return 0, err
+	}
+	if u64 > math.MaxUint16 {
+		return 0, fmt.Errorf("值 %d 超出 uint16 范围", u64)
+	}
+	return uint16(u64), nil
 }
 
 func castUint32(value any) (uint32, error) {
 	u64, err := castUint64(value)
-	return uint32(u64), err
+	if err != nil {
+		return 0, err
+	}
+	if u64 > math.MaxUint32 {
+		return 0, fmt.Errorf("值 %d 超出 uint32 范围", u64)
+	}
+	return uint32(u64), nil
 }
 
 func castUint64(value any) (uint64, error) {
@@ -359,10 +408,19 @@ func numericToInt64(value any) (int64, error) {
 	case uint32:
 		return int64(typed), nil
 	case uint64:
+		if typed > math.MaxInt64 {
+			return 0, fmt.Errorf("值 %d 超出 int64 范围", typed)
+		}
 		return int64(typed), nil
 	case float32:
+		if typed < math.MinInt64 || typed > math.MaxInt64 {
+			return 0, fmt.Errorf("值 %v 超出 int64 范围", typed)
+		}
 		return int64(typed), nil
 	case float64:
+		if typed < math.MinInt64 || typed > math.MaxInt64 {
+			return 0, fmt.Errorf("值 %v 超出 int64 范围", typed)
+		}
 		return int64(typed), nil
 	default:
 		return 0, fmt.Errorf("无法将 %T 转换为 int64", value)
@@ -372,14 +430,29 @@ func numericToInt64(value any) (int64, error) {
 func numericToUint64(value any) (uint64, error) {
 	switch typed := value.(type) {
 	case int:
+		if typed < 0 {
+			return 0, fmt.Errorf("值 %d 不能转换为 uint64", typed)
+		}
 		return uint64(typed), nil
 	case int8:
+		if typed < 0 {
+			return 0, fmt.Errorf("值 %d 不能转换为 uint64", typed)
+		}
 		return uint64(typed), nil
 	case int16:
+		if typed < 0 {
+			return 0, fmt.Errorf("值 %d 不能转换为 uint64", typed)
+		}
 		return uint64(typed), nil
 	case int32:
+		if typed < 0 {
+			return 0, fmt.Errorf("值 %d 不能转换为 uint64", typed)
+		}
 		return uint64(typed), nil
 	case int64:
+		if typed < 0 {
+			return 0, fmt.Errorf("值 %d 不能转换为 uint64", typed)
+		}
 		return uint64(typed), nil
 	case uint:
 		return uint64(typed), nil
@@ -392,8 +465,14 @@ func numericToUint64(value any) (uint64, error) {
 	case uint64:
 		return typed, nil
 	case float32:
+		if typed < 0 || typed > math.MaxUint64 {
+			return 0, fmt.Errorf("值 %v 超出 uint64 范围", typed)
+		}
 		return uint64(typed), nil
 	case float64:
+		if typed < 0 || typed > math.MaxUint64 {
+			return 0, fmt.Errorf("值 %v 超出 uint64 范围", typed)
+		}
 		return uint64(typed), nil
 	default:
 		return 0, fmt.Errorf("无法将 %T 转换为 uint64", value)
