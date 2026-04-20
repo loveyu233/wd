@@ -222,7 +222,7 @@ func addDurationToCustomTime[T timeValuer](value T, delta time.Duration, convert
 	return convert(value.Time().Add(delta))
 }
 
-func compareTime[T customTimeType](left, right T) int {
+func compareTime[T timeValuer](left, right T) int {
 	leftTime := left.Time()
 	rightTime := right.Time()
 	if leftTime.Before(rightTime) {
@@ -234,28 +234,28 @@ func compareTime[T customTimeType](left, right T) int {
 	return 0
 }
 
-func subCustomTime[T customTimeType](left, right T) time.Duration {
+func subCustomTime[T timeValuer](left, right T) time.Duration {
 	return left.Time().Sub(right.Time())
 }
 
 // Compare 根据自定义时间类型的语义比较两个值，返回 -1/0/1。
 // 零值会按 time.Time{} 参与比较：零值小于非零值，两个零值相等。
-func Compare[T customTimeType](left, right T) int {
+func Compare[T timeValuer](left, right T) int {
 	return compareTime(left, right)
 }
 
 // Before 根据自定义时间类型的语义判断 left 是否早于 right。
-func Before[T customTimeType](left, right T) bool {
+func Before[T timeValuer](left, right T) bool {
 	return Compare(left, right) < 0
 }
 
 // After 根据自定义时间类型的语义判断 left 是否晚于 right。
-func After[T customTimeType](left, right T) bool {
+func After[T timeValuer](left, right T) bool {
 	return Compare(left, right) > 0
 }
 
 // Equal 根据自定义时间类型的语义判断两个值是否相等。
-func Equal[T customTimeType](left, right T) bool {
+func Equal[T timeValuer](left, right T) bool {
 	return Compare(left, right) == 0
 }
 

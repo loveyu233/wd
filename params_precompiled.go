@@ -53,7 +53,7 @@ func validateOptionalRangeValue[T CustomTime](start, end *T) error {
 	if !hasOptionalRangeValue(start, end) {
 		return nil
 	}
-	if (*start).Time().After((*end).Time()) {
+	if After(*start, *end) {
 		return MsgErrInvalidParam(fmt.Errorf("start 不能大于 end"))
 	}
 	return nil
