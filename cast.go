@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // Cast 用来把任意值转换为目标类型，当前优先覆盖工具库内部常用的基础标量类型。
@@ -40,6 +43,18 @@ func Cast[T any](value any) (T, error) {
 		return castTarget[T](castFloat32(value))
 	case float64:
 		return castTarget[T](castFloat64(value))
+	case decimal.Decimal:
+		return castTarget[T](castDecimal(value))
+	case DateTime:
+		return castTarget[T](castDateTime(value))
+	case DateOnly:
+		return castTarget[T](castDateOnly(value))
+	case MonthDay:
+		return castTarget[T](castMonthDay(value))
+	case TimeOnly:
+		return castTarget[T](castTimeOnly(value))
+	case TimeHM:
+		return castTarget[T](castTimeHM(value))
 	default:
 		return castReflectValue[T](value)
 	}
@@ -208,6 +223,118 @@ func castFloat64(value any) (float64, error) {
 		return typed.Float64()
 	default:
 		return numericToFloat64(value)
+	}
+}
+
+func castDecimal(value any) (decimal.Decimal, error) {
+	switch typed := value.(type) {
+	case decimal.Decimal:
+		return typed, nil
+	case string:
+		return decimal.NewFromString(strings.TrimSpace(typed))
+	case []byte:
+		return decimal.NewFromString(strings.TrimSpace(string(typed)))
+	case json.Number:
+		return decimal.NewFromString(typed.String())
+	case fmt.Stringer:
+		return decimal.NewFromString(strings.TrimSpace(typed.String()))
+	default:
+		f64, err := numericToFloat64(value)
+		if err != nil {
+			return decimal.Decimal{}, fmt.Errorf("无法将 %T 转换为 decimal.Decimal", value)
+		}
+		return decimal.NewFromFloat(f64), nil
+	}
+}
+
+func castDateTime(value any) (DateTime, error) {
+	switch typed := value.(type) {
+	case DateTime:
+		return typed, nil
+	case time.Time:
+		return ToDateTime(typed), nil
+	case string:
+		return ParseDateTimeValue(strings.TrimSpace(typed))
+	case []byte:
+		return ParseDateTimeValue(strings.TrimSpace(string(typed)))
+	default:
+		return DateTime{}, fmt.Errorf("无法将 %T 转换为 DateTime", value)
+	}
+}
+
+func castDateOnly(value any) (DateOnly, error) {
+	switch typed := value.(type) {
+	case DateOnly:
+		return typed, nil
+	case time.Time:
+		return ToDateOnly(typed), nil
+	case DateTime:
+		return typed.ToDateOnly(), nil
+	case MonthDay:
+		return typed.ToDateOnly(), nil
+	case string:
+		return ParseDateOnly(strings.TrimSpace(typed))
+	case []byte:
+		return ParseDateOnly(strings.TrimSpace(string(typed)))
+	default:
+		return DateOnly{}, fmt.Errorf("无法将 %T 转换为 DateOnly", value)
+	}
+}
+
+func castMonthDay(value any) (MonthDay, error) {
+	switch typed := value.(type) {
+	case MonthDay:
+		return typed, nil
+	case time.Time:
+		return ToMonthDay(typed), nil
+	case DateTime:
+		return ToMonthDay(typed.Time()), nil
+	case DateOnly:
+		return ToMonthDay(typed.Time()), nil
+	case string:
+		return ParseMonthDay(strings.TrimSpace(typed))
+	case []byte:
+		return ParseMonthDay(strings.TrimSpace(string(typed)))
+	default:
+		return MonthDay{}, fmt.Errorf("无法将 %T 转换为 MonthDay", value)
+	}
+}
+
+func castTimeOnly(value any) (TimeOnly, error) {
+	switch typed := value.(type) {
+	case TimeOnly:
+		return typed, nil
+	case time.Time:
+		return ToTimeOnly(typed), nil
+	case DateTime:
+		return typed.ToTimeOnly(), nil
+	case TimeHM:
+		return typed.ToTimeOnly(), nil
+	case string:
+		return ParseTimeOnly(strings.TrimSpace(typed))
+	case []byte:
+		return ParseTimeOnly(strings.TrimSpace(string(typed)))
+	default:
+		return TimeOnly{}, fmt.Errorf("无法将 %T 转换为 TimeOnly", value)
+	}
+}
+
+func castTimeHM(value any) (TimeHM, error) {
+	switch typed := value.(type) {
+	case TimeHM:
+		return typed, nil
+	case time.Time:
+		return ToTimeHM(typed), nil
+	case DateTime:
+		return typed.ToTimeHM(), nil
+	case TimeOnly:
+		return typed.ToTimeHM(), nil
+	case string:
+		return ParseTimeHM(strings.TrimSpace(typed))
+	case []byte:
+		return ParseTimeHM(strings.TrimSpace(string(typed)))
+	default:
+		return TimeHM{}, fmt.Errorf("无法将 %T 转换为 TimeHM", value)
 	}
 }
 
