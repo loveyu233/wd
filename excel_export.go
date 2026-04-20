@@ -459,7 +459,7 @@ func (e *ExcelExporter) writeData(file *excelize.File, sheetName string,
 
 		// 批量写入
 		if len(cellData) >= batchSize || i == dataValue.Len()-1 {
-			err = e.writeBatch(file, sheetName, cellData, structInfo,
+			err = e.writeBatch(file, sheetName, cellData,
 				startRow+i-len(cellData)+1, dataStyleID)
 			if err != nil {
 				return err
@@ -473,7 +473,7 @@ func (e *ExcelExporter) writeData(file *excelize.File, sheetName string,
 
 // writeBatch 用来将暂存的单元格数据写入 Excel。
 func (e *ExcelExporter) writeBatch(file *excelize.File, sheetName string,
-	cellData [][]interface{}, structInfo *exportStructInfo, startRow int, styleID int) error {
+	cellData [][]interface{}, startRow int, styleID int) error {
 
 	for i, rowData := range cellData {
 		currentRow := startRow + i
