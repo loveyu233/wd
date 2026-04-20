@@ -349,7 +349,7 @@ func ToTimeOnlyTrimSeconds(t time.Time) TimeOnly {
 
 // NewDateTimeString 用来从字符串解析 DateTime。
 func NewDateTimeString(dateString string) (*DateTime, error) {
-	return newParsedTimeValue[DateTime](dateString, parseDateTimeString, ToDateTime)
+	return newParsedTimeValue(dateString, parseDateTimeString, ToDateTime)
 }
 
 // ToDateOnly 用来把完整的 DateTime 取整到日期。
@@ -417,7 +417,7 @@ func NewDateOnly(year int, month time.Month, day int) DateOnly {
 
 // NewDateOnlyString 用来从字符串解析 DateOnly。
 func NewDateOnlyString(dateString string) (*DateOnly, error) {
-	return newParsedTimeValue[DateOnly](dateString, parseDateOnlyString, ToDateOnly)
+	return newParsedTimeValue(dateString, parseDateOnlyString, ToDateOnly)
 }
 
 // ToDateTime 用来把 DateOnly 转换回 DateTime。
@@ -478,7 +478,7 @@ func (d DateOnly) FormatRelativeDate() string {
 
 // AddDays 用来在日期上增加或减少天数。
 func (d DateOnly) AddDays(days int) DateOnly {
-	return addDateToCustomTime[DateOnly](d, 0, 0, days, ToDateOnly)
+	return addDateToCustomTime(d, 0, 0, days, ToDateOnly)
 }
 
 // ========== MonthDay ==========
@@ -490,7 +490,7 @@ func NewMonthDay(month time.Month, day int) MonthDay {
 
 // NewMonthDayString 用来从 MM-DD 字符串解析 MonthDay。
 func NewMonthDayString(value string) (*MonthDay, error) {
-	return newParsedTimeValue[MonthDay](value, parseMonthDayString, ToMonthDay)
+	return newParsedTimeValue(value, parseMonthDayString, ToMonthDay)
 }
 
 // ToDateTime 用来把 MonthDay 转换回带固定年份的 DateTime。
@@ -558,7 +558,7 @@ func NewTimeOnly(hour, minute, second int) TimeOnly {
 
 // NewTimeOnlyString 用来从 HH:MM:SS 字符串解析 TimeOnly。
 func NewTimeOnlyString(timeString string) (*TimeOnly, error) {
-	return newParsedTimeValue[TimeOnly](timeString, parseTimeOnlyString, ToTimeOnly)
+	return newParsedTimeValue(timeString, parseTimeOnlyString, ToTimeOnly)
 }
 
 // ToTimeHM 用来把 TimeOnly 精确到分钟。
@@ -588,7 +588,7 @@ func (t TimeOnly) IsZero() bool {
 
 // AddTime 用来在时间上增加指定的时分秒。
 func (t TimeOnly) AddTime(hours, minutes, seconds int) TimeOnly {
-	return addDurationToCustomTime[TimeOnly](t,
+	return addDurationToCustomTime(t,
 		buildClockDuration(hours, minutes, seconds),
 		ToTimeOnly,
 	)
@@ -629,7 +629,7 @@ func NewTimeHM(hour, minute int) TimeHM {
 
 // NewTimeHMString 用来从 HH:MM 字符串解析 TimeHM。
 func NewTimeHMString(timeString string) (*TimeHM, error) {
-	return newParsedTimeValue[TimeHM](timeString, parseTimeHMString, ToTimeHM)
+	return newParsedTimeValue(timeString, parseTimeHMString, ToTimeHM)
 }
 
 // ToTimeOnly 用来从 TimeHM 获取包含秒的时间。
@@ -659,7 +659,7 @@ func (t TimeHM) IsZero() bool {
 
 // AddTime 用来为小时分钟值增加时长。
 func (t TimeHM) AddTime(hours, minutes int) TimeHM {
-	return addDurationToCustomTime[TimeHM](t,
+	return addDurationToCustomTime(t,
 		buildClockDuration(hours, minutes, 0),
 		ToTimeHM,
 	)
