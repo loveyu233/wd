@@ -38,7 +38,7 @@
 | 短信服务 | `sms.go` | 阿里云短信发送能力 | `NewSMS` `NewSMSWithAccessKey` `NewSMSWithClient` |
 | Excel 工具 | `excel_export.go` `excel_mapper.go` `excel_math.go` | Excel 导出、导入、坐标换算 | `InitExcelExporter` `InitExcelMapper` |
 | 时间与 SQL 类型 | `sql_type.go` `time.go` | `DateTime`/`DateOnly`/`MonthDay`/`TimeOnly`/`TimeHM` 类型与时间工具 | `Now` `ParseDateTimeValue` |
-| 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、Diff 等 | 各文件导出函数 |
+| 通用工具 | `file.go` `resty.go` `encrypt.go` `random.go` `cast.go` `lo.go` 等 | 文件上传、HTTP 调用、加密、脱敏、模板、类型转换、集合辅助等 | 各文件导出函数 |
 
 ## 专题文档
 
@@ -66,6 +66,7 @@
 - [12. 文件、HTTP、加密、随机串等常用工具](#12-文件http加密随机串等常用工具)
 - [附录：按文件查 API](#附录按文件查-api)
 - [13. 其他基础工具索引](#13-其他基础工具索引)
+- [13.1 依赖治理与自研替代说明](#131-依赖治理与自研替代说明)
 - [14. 推荐阅读顺序](#14-推荐阅读顺序)
 - [15. 仓库内示例与测试](#15-仓库内示例与测试)
 - [16. 总结](#16-总结)
@@ -75,6 +76,20 @@
 ```bash
 go get github.com/loveyu233/wd@latest
 ```
+
+## 依赖治理说明
+
+当前版本对一部分“只使用少量能力”的第三方依赖做了收敛，目标是减少主模块的直连依赖，并把真正属于工具库边界的能力沉淀为仓库内实现。
+
+已经完成的典型调整包括：
+
+- `lo` 相关能力已改为项目内实现，统一由 `lo.go` 提供
+- 通用类型转换已统一收敛到 `cast.go` 的 `Cast[T]`
+- 文件并发上传逻辑已改为项目内的 `WaitGroup + channel` 实现
+- `github.com/go-sql-driver/mysql` 已降为 indirect
+- `gorm.io/plugin/dbresolver` 已降为 indirect
+
+如果你维护的是旧版本接入代码，升级时请以当前 README 中列出的导出入口为准。
 
 ## 5 分钟快速接入
 
@@ -1075,17 +1090,35 @@ err := wd.RPost(
 )
 ```
 
-### 14.3 加密与密码工具 `encrypt.go`
+### 14.3 类型转换工具 `cast.go`
+
+`cast.go` 提供当前仓库内部统一使用的泛型转换入口：
+
+- `Cast[T](value)`
+
+当前明确支持：
+
+- 基础标量：`string`、`bool`、各类 `int/uint`、`float32/float64`
+- 业务类型：`decimal.Decimal`、`DateTime`、`DateOnly`、`MonthDay`、`TimeOnly`、`TimeHM`
+- 可赋值或可转换的命名类型/别名类型
+
+当前明确不做：
+
+- 不自动解引用指针
+- 不允许负数转无符号
+- 超范围数值窄化会直接报错
+- 空白字符串转数值/金额/时间类型会报错
+
+### 14.4 加密与密码工具 `encrypt.go`
 
 - `EncryptData(data, customKeyFunc)`：序列化后做 AES-GCM 加密
 - `PasswordEncryption(password)`：bcrypt 哈希
 - `PasswordCompare(password, hashed)`：密码校验
 - `PasswordValidateStrength(password, minLen, maxLen)`：强度校验
 
-### 14.4 随机与 ID 工具 `random.go` / `snowflake.go`
+### 14.5 随机与 ID 工具 `random.go` / `snowflake.go`
 
 - `GetUUID()`
-- `GetXID()`
 - `InitSnowflakeWorker(workerID)`
 - `GetSnowflakeID()`
 - `RandomString(length)`
@@ -1093,14 +1126,14 @@ err := wd.RPost(
 - `RandomIntRange(left, right)`
 - `RandomExcludeErrorPronCharacters(...)`
 
-### 14.5 金额工具 `decimal.go`
+### 14.6 金额工具 `decimal.go`
 
 - `DecimalYuanToFen`
 - `DecimalFenToYuan`
 - `DecimalFenToYuanStr`
 - `DecimalAddsSubsGteZero`
 
-### 14.6 字符串与脱敏 `string.go`
+### 14.7 字符串与脱敏 `string.go`
 
 - `ValidateChineseMobile`
 - `ValidateChineseIDCard`
@@ -1110,37 +1143,25 @@ err := wd.RPost(
 - `GetGenderFromIDCard`
 - `ReplacePathParamsFast`
 
-### 14.7 模板与差异比较
+### 14.8 模板 / 集合 / Context 小工具
 
 `template.go`：
 
 - `TemplateReplace(templateText, data)`
-
-`obj_diff.go`：
-
-- `DiffReturnLogs`
-- `DiffReturnSemanticLogs`
-- `DiffText`
-- `DiffReturnHtml`
-- `DiffReturnColorText`
-
-适合“更新前后差异审计”“操作日志语义化输出”之类的场景。
-
-### 14.8 JSON / 集合 / Context 小工具
-
-`gjson.go`：
-
-- `JsonGetValue(jsonStr, key)`
 
 `lo.go`：
 
 - `LoMap`
 - `LoSliceToMap`
 - `LoTernary`
+- `LoTernaryFunc`
 - `LoWithout`
+- `LoContains`
 - `LoUniq`
 - `LoToPtr`
 - `LoFromPtr`
+
+这些函数当前都已经是仓库内实现，不再依赖外部 `lo` 包。
 
 `context.go`：
 
@@ -1209,14 +1230,13 @@ err := wd.RPost(
 | `excel_math.go` | `ExcelGetPosition`、`ExcelGetPositionBatch`、`ExcelColumnToIndex`、`ExcelParsePosition` |
 | `file.go` | `InitConfig`、`ReadFileContent`、`GetFileContentType`、`GetFileNameType`、`UploadFileToTargetURL` |
 | `resty.go` | `RestyClient`、`R`、`RPost`、`RGet` |
+| `cast.go` | `Cast[T]` |
 | `encrypt.go` | `EncryptData`、`PasswordEncryption`、`PasswordCompare`、`PasswordValidateStrength` |
-| `random.go` | `GetUUID`、`GetXID`、`InitSnowflakeWorker`、`GetSnowflakeID`、`RandomString`、`RandomIntRange` |
+| `random.go` | `GetUUID`、`InitSnowflakeWorker`、`GetSnowflakeID`、`RandomString`、`RandomIntRange` |
 | `decimal.go` | `DecimalYuanToFen`、`DecimalFenToYuan`、`DecimalFenToYuanStr` |
 | `string.go` | `ValidateChineseMobile`、`ValidateChineseIDCard`、`MaskMobile`、`MaskIDCard`、`MaskUsername` |
-| `obj_diff.go` | `DiffReturnLogs`、`DiffReturnSemanticLogs`、`DiffText`、`DiffReturnHtml` |
 | `template.go` | `TemplateReplace` |
-| `lo.go` | `LoMap`、`LoSliceToMap`、`LoTernary`、`LoUniq`、`LoToPtr`、`LoFromPtr` |
-| `gjson.go` | `JsonGetValue` |
+| `lo.go` | `LoMap`、`LoSliceToMap`、`LoTernary`、`LoTernaryFunc`、`LoWithout`、`LoContains`、`LoUniq`、`LoToPtr`、`LoFromPtr` |
 | `context.go` | `Context`、`DurationSecond` |
 | `signal.go` | `InsGlobalHook`、`(*SignalHook).AppendFun`、`Trigger`、`Wait` |
 
@@ -1227,7 +1247,7 @@ err := wd.RPost(
 | `sms.go` | `NewSMS`、`NewSMSWithAccessKey`、`NewSMSWithClient`、`SendMsg`、`SendSimpleMsg`、`SendBatchSms` |
 
 
-## 15. 其他基础工具索引
+## 13. 其他基础工具索引
 
 下面这些工具不一定需要单独展开成章节，但在实际项目里都很实用：
 
@@ -1244,9 +1264,29 @@ err := wd.RPost(
 | `internal/xclients/*` | 微信/支付宝 SDK 初始化内部封装 |
 | `internal/xhelper/nil.go` | 处理 interface nil 判断 |
 
+### 13.1 依赖治理与自研替代说明
+
+如果你在历史项目里见过这些旧入口，请注意当前仓库状态已经变化：
+
+- 已移除：
+  - `GetXID`
+  - `obj_diff.go` 中的差异对比工具
+  - `gjson.go` 中的 `JsonGetValue`
+- 已改为仓库内实现：
+  - `lo.go` 的集合与指针辅助
+  - `cast.go` 的泛型类型转换
+  - `params_precompiled.go` 中的并发上传实现
+
+依赖层面也做过收敛：
+
+- `github.com/go-sql-driver/mysql` 已降为 indirect
+- `gorm.io/plugin/dbresolver` 已降为 indirect
+
+这些调整不会改变当前 README 中列出的主入口使用方式，但如果你维护的是旧版本接入代码，升级时需要特别注意这些 API 变化。
+
 ---
 
-## 16. 推荐阅读顺序
+## 14. 推荐阅读顺序
 
 如果你第一次接触这个库，建议这样看：
 
@@ -1256,7 +1296,7 @@ err := wd.RPost(
 4. 如果你做后台业务系统，再看 `PATCH`、`ReqRange`、`Excel`、`Redis Lua`；
 5. 最后按需查“通用工具索引”。
 
-## 17. 仓库内示例与测试
+## 15. 仓库内示例与测试
 
 仓库里已经有一些非常值得参考的示例：
 
@@ -1265,7 +1305,7 @@ err := wd.RPost(
 
 如果你不知道某个工具在真实项目中应该如何拼装，优先看这些测试文件。
 
-## 18. 总结
+## 16. 总结
 
 如果把 `wd` 当成一个工具箱来理解，可以把它分成三层：
 
