@@ -34,7 +34,7 @@ type patchResolvedTarget[T any] struct {
 }
 
 func PatchUpdateSimple[T any](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (field.AssignExpr, error) {
-	ae, updated, err := patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual[T], firstPatchNullSetter(setNull...))
+	ae, updated, err := patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual, firstPatchNullSetter(setNull...))
 	if err != nil || !updated {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func PatchUpdateSimple[T any](patch Field[T], oldValue any, target any, setNull 
 
 // PatchUpdate 判断新旧两个字段是否相同，如果不相同则创建修改，相同则直接返回。
 func PatchUpdate[T any](patch Field[T], oldValue any, target any, setNull ...func() field.AssignExpr) (ae field.AssignExpr, isUpdate bool, err error) {
-	return patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual[T], firstPatchNullSetter(setNull...))
+	return patchUpdateWithEqual(patch, oldValue, target, defaultPatchEqual, firstPatchNullSetter(setNull...))
 }
 
 // PatchUpdateSimpleBy 用来自定义两个值的比较逻辑，适合 decimal、JSON 等需要业务等价判断的类型。
@@ -62,7 +62,7 @@ func PatchUpdateBy[T any](patch Field[T], oldValue any, target any, equal PatchE
 
 func patchUpdateWithEqual[T any](patch Field[T], oldValue any, target any, equal PatchEqualFunc[T], setNull func() field.AssignExpr) (field.AssignExpr, bool, error) {
 	if equal == nil {
-		equal = defaultPatchEqual[T]
+		equal = defaultPatchEqual
 	}
 
 	oldInfo, err := parsePatchOldValue[T](oldValue)

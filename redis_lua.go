@@ -40,6 +40,29 @@ func (r *RedisConfig) runLua(script string, keys []string, args ...any) (any, er
 	return redis.NewScript(script).Run(BackgroundContext(), r.UniversalClient, keys, args...).Result()
 }
 
+func runLuaDecode[T any](r *RedisConfig, script string, keys []string, args ...any) (T, error) {
+	result, err := r.runLua(script, keys, args...)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+
+	var decoded T
+	if err := luaUnmarshalResult(result, &decoded); err != nil {
+		var zero T
+		return zero, err
+	}
+	return decoded, nil
+}
+
+func runLuaInt64(r *RedisConfig, script string, keys []string, args ...any) (int64, error) {
+	result, err := r.runLua(script, keys, args...)
+	if err != nil {
+		return 0, err
+	}
+	return cast.ToInt64(result), nil
+}
+
 // LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreAndGetHashValue 用来查询 zset 范围并附带目标成员及哈希值。
 func (r *RedisConfig) LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreAndGetHashValue(zSetKey, hashKey string, start, end int64, targetMember string, descending bool) (*LuaRespData, error) {
 	lua := `local key = KEYS[1]
@@ -300,18 +323,7 @@ func (r *RedisConfig) LuaRedisZSetGetMemberScoreAndRankAndGetHashValue(zSetKey, 
 	// 将布尔值转换为字符串传递给 Lua
 	descendingStr := luaBoolString(descending)
 
-	result, err := r.runLua(lua, []string{zSetKey, hashKey}, member, descendingStr)
-	if err != nil {
-		return nil, err
-	}
-
-	var memberInfo *MemberInfo
-	err = luaUnmarshalResult(result, &memberInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	return memberInfo, nil
+	return runLuaDecode[*MemberInfo](r, lua, []string{zSetKey, hashKey}, member, descendingStr)
 }
 
 // LuaRedisZSetGetMemberScoreAndRankAndGetHashValueDesc 用来以降序方式查询成员信息。
@@ -363,18 +375,7 @@ func (r *RedisConfig) LuaRedisZSetGetMemberScoreAndRank(key string, member strin
 	// 将布尔值转换为字符串传递给 Lua
 	descendingStr := luaBoolString(descending)
 
-	result, err := r.runLua(lua, []string{key}, member, descendingStr)
-	if err != nil {
-		return nil, err
-	}
-
-	var memberInfo *MemberInfo
-	err = luaUnmarshalResult(result, &memberInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	return memberInfo, nil
+	return runLuaDecode[*MemberInfo](r, lua, []string{key}, member, descendingStr)
 }
 
 // LuaRedisZSetGetMemberScoreAndRankDesc 用来以降序方式计算成员排名。
@@ -449,18 +450,7 @@ func (r *RedisConfig) LuaRedisZSetGetMultipleMembersScoreAndRankAndHashValues(zS
 		args[i+1] = member
 	}
 
-	result, err := r.runLua(lua, []string{zSetKey, hashKey}, args...)
-	if err != nil {
-		return nil, err
-	}
-
-	var memberInfos []*MemberInfo
-	err = luaUnmarshalResult(result, &memberInfos)
-	if err != nil {
-		return nil, err
-	}
-
-	return memberInfos, nil
+	return runLuaDecode[[]*MemberInfo](r, lua, []string{zSetKey, hashKey}, args...)
 }
 
 // LuaRedisZSetGetMultipleMembersScoreAndRankAndHashValuesDesc 用来以降序方式批量获取成员信息。
@@ -532,18 +522,7 @@ func (r *RedisConfig) LuaRedisZSetGetMultipleMembersScoreAndRank(key string, mem
 		args[i+1] = member
 	}
 
-	result, err := r.runLua(lua, []string{key}, args...)
-	if err != nil {
-		return nil, err
-	}
-
-	var memberInfos []*MemberInfo
-	err = luaUnmarshalResult(result, &memberInfos)
-	if err != nil {
-		return nil, err
-	}
-
-	return memberInfos, nil
+	return runLuaDecode[[]*MemberInfo](r, lua, []string{key}, args...)
 }
 
 // LuaRedisZSetGetMultipleMembersScoreAndRankDesc 用来以降序获取多个成员的排名。
@@ -566,11 +545,11 @@ func (r *RedisConfig) LuaRedisDistributedLock(key, value string, expireSeconds i
 				return 0
 			end`
 
-	result, err := r.runLua(lua, []string{key}, value, expireSeconds)
+	result, err := runLuaInt64(r, lua, []string{key}, value, expireSeconds)
 	if err != nil {
 		return false, err
 	}
-	return cast.ToInt64(result) == 1, nil
+	return result == 1, nil
 }
 
 // LuaRedisDistributedUnlock 用来安全地释放分布式锁。
@@ -581,11 +560,11 @@ func (r *RedisConfig) LuaRedisDistributedUnlock(key, value string) (bool, error)
 				return 0
 			end`
 
-	result, err := r.runLua(lua, []string{key}, value)
+	result, err := runLuaInt64(r, lua, []string{key}, value)
 	if err != nil {
 		return false, err
 	}
-	return cast.ToInt64(result) == 1, nil
+	return result == 1, nil
 }
 
 // 2. 限流相关
@@ -612,11 +591,7 @@ func (r *RedisConfig) LuaRedisRateLimit(key string, window, limit int64) (int64,
 				return -1
 			end`
 
-	result, err := r.runLua(lua, []string{key}, window, limit)
-	if err != nil {
-		return -1, err
-	}
-	return cast.ToInt64(result), nil
+	return runLuaInt64(r, lua, []string{key}, window, limit)
 }
 
 // 3. 计数器相关
@@ -654,14 +629,7 @@ func (r *RedisConfig) LuaRedisIncrWithLimit(key string, increment, maxValue, exp
 				})
 			end`
 
-	result, err := r.runLua(lua, []string{key}, increment, maxValue, expireSeconds)
-	if err != nil {
-		return nil, err
-	}
-
-	var counterResult *CounterResult
-	err = luaUnmarshalResult(result, &counterResult)
-	return counterResult, err
+	return runLuaDecode[*CounterResult](r, lua, []string{key}, increment, maxValue, expireSeconds)
 }
 
 // 4. 队列相关
@@ -680,11 +648,7 @@ func (r *RedisConfig) LuaRedisQueuePushWithLimit(key, value string, maxLength in
 				return -1
 			end`
 
-	result, err := r.runLua(lua, []string{key}, value, maxLength)
-	if err != nil {
-		return -1, err
-	}
-	return cast.ToInt64(result), nil
+	return runLuaInt64(r, lua, []string{key}, value, maxLength)
 }
 
 // 5. 缓存相关
@@ -707,11 +671,11 @@ func (r *RedisConfig) LuaRedisSetWithVersion(key, value string, version, expireS
 				return 0
 			end`
 
-	result, err := r.runLua(lua, []string{key}, value, version, expireSeconds)
+	result, err := runLuaInt64(r, lua, []string{key}, value, version, expireSeconds)
 	if err != nil {
 		return false, err
 	}
-	return cast.ToInt64(result) == 1, nil
+	return result == 1, nil
 }
 
 // 6. 库存扣减
@@ -748,14 +712,7 @@ func (r *RedisConfig) LuaRedisDecrStock(key string, quantity int64) (*StockResul
 				})
 			end`
 
-	result, err := r.runLua(lua, []string{key}, quantity)
-	if err != nil {
-		return nil, err
-	}
-
-	var stockResult *StockResult
-	err = luaUnmarshalResult(result, &stockResult)
-	return stockResult, err
+	return runLuaDecode[*StockResult](r, lua, []string{key}, quantity)
 }
 
 // 7. HyperLogLog 去重计数
@@ -780,11 +737,7 @@ func (r *RedisConfig) LuaRedisHLLAddAndCount(key string, elements []string) (int
 		args[i] = element
 	}
 
-	result, err := r.runLua(lua, []string{key}, args...)
-	if err != nil {
-		return 0, err
-	}
-	return cast.ToInt64(result), nil
+	return runLuaInt64(r, lua, []string{key}, args...)
 }
 
 // 8. 排行榜相关
@@ -810,14 +763,7 @@ func (r *RedisConfig) LuaRedisLeaderboardIncr(key, member string, increment floa
 				rank = tonumber(rank)
 			})`
 
-	result, err := r.runLua(lua, []string{key}, member, increment)
-	if err != nil {
-		return nil, err
-	}
-
-	var leaderboardMember *LeaderboardMember
-	err = luaUnmarshalResult(result, &leaderboardMember)
-	return leaderboardMember, err
+	return runLuaDecode[*LeaderboardMember](r, lua, []string{key}, member, increment)
 }
 
 // 9. 延迟队列
@@ -864,14 +810,7 @@ func (r *RedisConfig) LuaRedisDelayQueuePop(key string, currentTime int64, limit
 			
 			return cjson.encode(results)`
 
-	result, err := r.runLua(lua, []string{key}, currentTime, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	var messages []*DelayedMessage
-	err = luaUnmarshalResult(result, &messages)
-	return messages, err
+	return runLuaDecode[[]*DelayedMessage](r, lua, []string{key}, currentTime, limit)
 }
 
 // 10. 布隆过滤器模拟 (使用多个 Hash)
@@ -916,11 +855,11 @@ func (r *RedisConfig) LuaRedisBloomExists(key, element string) (bool, error) {
 				return 0
 			end`
 
-	result, err := r.runLua(lua, []string{key}, element)
+	result, err := runLuaInt64(r, lua, []string{key}, element)
 	if err != nil {
 		return false, err
 	}
-	return cast.ToInt64(result) == 1, nil
+	return result == 1, nil
 }
 
 type luaRedisIDConfig struct {
@@ -971,11 +910,7 @@ func (r *RedisConfig) LuaRedisID(opts ...WithLuaRedisIDConfigOption) (int64, err
 		end
 		return redis.call('incrby', KEYS[1], iNCRValue)
 	`
-	result, err := r.runLua(script, []string{idConfig.key}, idConfig.startNumber, idConfig.iNCRValue)
-	if err != nil {
-		return 0, err
-	}
-	return cast.ToInt64(result), nil
+	return runLuaInt64(r, script, []string{idConfig.key}, idConfig.startNumber, idConfig.iNCRValue)
 }
 
 func (r *RedisConfig) LuaWithholding(key string, requestNumber uint64) (int64, error) {
@@ -992,9 +927,5 @@ func (r *RedisConfig) LuaWithholding(key string, requestNumber uint64) (int64, e
 			return -1
 		end
 	`
-	result, err := r.runLua(script, []string{key}, requestNumber)
-	if err != nil {
-		return -1, err
-	}
-	return cast.ToInt64(result), nil
+	return runLuaInt64(r, script, []string{key}, requestNumber)
 }
