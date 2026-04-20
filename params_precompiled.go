@@ -153,6 +153,11 @@ func (r *ReqFiles) UploadAll(ctx context.Context, uploadFileFunc func(file *mult
 }
 
 // FilesUploadGoroutine 用来并发上传多文件并收集结果。
+// 当前行为约定如下：
+// - 默认并发数为 5；当 sem<=0 时会回退为 1
+// - 返回值 success 只包含成功上传的文件映射
+// - 若存在多个错误，只返回最先写入错误通道的那个错误
+// - 在进入 worker 和实际上传前都会检查 ctx，尽量避免取消后继续执行上传
 func FilesUploadGoroutine(ctx context.Context, files []*multipart.FileHeader, uploadFileFunc func(file *multipart.FileHeader) (string, error), sem ...int64) (success map[string]string, err error) {
 	if len(sem) == 0 {
 		sem = []int64{5}

@@ -4,7 +4,7 @@ import (
 	"reflect"
 )
 
-// LoMap 用来对切片执行映射转换。
+// LoMap 用来对切片执行映射转换，并保持原始顺序。
 func LoMap[T any, R any](collection []T, iteratee func(item T, index int) R) []R {
 	if len(collection) == 0 {
 		return []R{}
@@ -16,7 +16,7 @@ func LoMap[T any, R any](collection []T, iteratee func(item T, index int) R) []R
 	return result
 }
 
-// LoSliceToMap 用来把切片转换为键值映射。
+// LoSliceToMap 用来把切片转换为键值映射；重复键会由后面的值覆盖前面的值。
 func LoSliceToMap[T any, K comparable, V any](collection []T, transform func(item T) (K, V)) map[K]V {
 	result := make(map[K]V, len(collection))
 	for _, item := range collection {
@@ -43,6 +43,7 @@ func LoTernaryFunc[T any](condition bool, ifFunc func() T, elseFunc func() T) T 
 }
 
 // LoWithout 用来返回排除了指定元素的新切片。
+// 当 exclude 为空时会返回 collection 的副本，而不是直接复用底层数组。
 func LoWithout[T comparable, Slice interface{ ~[]T }](collection Slice, exclude ...T) Slice {
 	if len(collection) == 0 || len(exclude) == 0 {
 		return append(Slice(nil), collection...)
@@ -61,7 +62,7 @@ func LoWithout[T comparable, Slice interface{ ~[]T }](collection Slice, exclude 
 	return result
 }
 
-// LoUniq 用来去除切片中的重复值。
+// LoUniq 用来去除切片中的重复值，并保留首次出现时的顺序。
 func LoUniq[T comparable, Slice interface{ ~[]T }](collection Slice) Slice {
 	if len(collection) == 0 {
 		return Slice{}
@@ -102,12 +103,13 @@ func IsPtr(target any) bool {
 	return true
 }
 
-// LoToPtr 用来返回值的指针表示。
+// LoToPtr 用来返回值的指针表示，每次调用都会返回一个新的地址。
 func LoToPtr[T any](x T) *T {
 	return &x
 }
 
 // LoFromPtr 用来在指针为空时返回零值，否则返回其内容。
+// 它不会区分“显式零值指针”和“nil 指针”以外的业务语义。
 func LoFromPtr[T any](x *T) T {
 	if x == nil {
 		var zero T

@@ -12,7 +12,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Cast 用来把任意值转换为目标类型，当前优先覆盖工具库内部常用的基础标量类型。
+// Cast 用来把任意值转换为目标类型。
+// 当前明确支持以下目标类型：
+// - 基础标量：string、bool、各类 int/uint、float32/float64
+// - 业务类型：decimal.Decimal、DateTime、DateOnly、MonthDay、TimeOnly、TimeHM
+// - 反射兜底：对可赋值或可转换的命名类型/别名类型生效
+//
+// 这不是一个“万能 cast”工具，当前有意保持以下边界：
+// - 不自动解引用指针
+// - 负数不会转换为无符号整数
+// - 超范围数值窄化会返回错误，而不是静默截断
+// - 空白字符串对数值/金额/时间类型会返回错误
 func Cast[T any](value any) (T, error) {
 	var zero T
 	switch any(zero).(type) {
