@@ -239,6 +239,7 @@ func subCustomTime[T customTimeType](left, right T) time.Duration {
 }
 
 // Compare 根据自定义时间类型的语义比较两个值，返回 -1/0/1。
+// 零值会按 time.Time{} 参与比较：零值小于非零值，两个零值相等。
 func Compare[T customTimeType](left, right T) int {
 	return compareTime(left, right)
 }
@@ -397,6 +398,7 @@ func (dt DateTime) Equal(other DateTime) bool {
 }
 
 // Sub 用来计算两个完整日期时间的差值。
+// 零值会按 time.Time{} 参与计算，两个零值的差值为 0。
 func (dt DateTime) Sub(other DateTime) time.Duration {
 	return subCustomTime(dt, other)
 }
@@ -464,6 +466,7 @@ func (d DateOnly) Equal(other DateOnly) bool {
 }
 
 // Sub 用来计算两个日期之间的差值。
+// 零值会按 time.Time{} 参与计算，两个零值的差值为 0。
 func (d DateOnly) Sub(other DateOnly) time.Duration {
 	return subCustomTime(d, other)
 }
@@ -541,6 +544,7 @@ func (m MonthDay) Equal(other MonthDay) bool {
 }
 
 // Sub 用来计算两个月日之间的差值。
+// 零值会按 time.Time{} 参与计算，两个零值的差值为 0。
 func (m MonthDay) Sub(other MonthDay) time.Duration {
 	return subCustomTime(m, other)
 }
@@ -611,6 +615,7 @@ func (t TimeOnly) Equal(other TimeOnly) bool {
 }
 
 // Sub 用来计算两个时间的时间差。
+// 零值会按 time.Time{} 参与计算，两个零值的差值为 0。
 func (t TimeOnly) Sub(other TimeOnly) time.Duration {
 	return subCustomTime(t, other)
 }
@@ -681,6 +686,7 @@ func (t TimeHM) Equal(other TimeHM) bool {
 }
 
 // Sub 用来计算两个小时分钟值之间的差。
+// 零值会按 time.Time{} 参与计算，两个零值的差值为 0。
 func (t TimeHM) Sub(other TimeHM) time.Duration {
 	return subCustomTime(t, other)
 }
