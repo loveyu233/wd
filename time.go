@@ -220,16 +220,58 @@ func addDurationToCustomTime[T timeValuer](value T, delta time.Duration, convert
 	return convert(value.Time().Add(delta))
 }
 
-func beforeTimeValue[T timeValuer](left, right T) bool {
-	return left.Time().Before(right.Time())
+// Before 根据自定义时间类型的语义判断 left 是否早于 right。
+func Before[T customTimeType](left, right T) bool {
+	switch leftValue := any(left).(type) {
+	case DateTime:
+		return leftValue.Time().Before(any(right).(DateTime).Time())
+	case DateOnly:
+		return leftValue.Time().Before(any(right).(DateOnly).Time())
+	case MonthDay:
+		return leftValue.Time().Before(any(right).(MonthDay).Time())
+	case TimeOnly:
+		return leftValue.Time().Before(any(right).(TimeOnly).Time())
+	case TimeHM:
+		return leftValue.Time().Before(any(right).(TimeHM).Time())
+	default:
+		return false
+	}
 }
 
-func afterTimeValue[T timeValuer](left, right T) bool {
-	return left.Time().After(right.Time())
+// After 根据自定义时间类型的语义判断 left 是否晚于 right。
+func After[T customTimeType](left, right T) bool {
+	switch leftValue := any(left).(type) {
+	case DateTime:
+		return leftValue.Time().After(any(right).(DateTime).Time())
+	case DateOnly:
+		return leftValue.Time().After(any(right).(DateOnly).Time())
+	case MonthDay:
+		return leftValue.Time().After(any(right).(MonthDay).Time())
+	case TimeOnly:
+		return leftValue.Time().After(any(right).(TimeOnly).Time())
+	case TimeHM:
+		return leftValue.Time().After(any(right).(TimeHM).Time())
+	default:
+		return false
+	}
 }
 
-func equalTimeValue[T timeValuer](left, right T) bool {
-	return left.Time().Equal(right.Time())
+// Equal 根据自定义时间类型的语义判断两个值是否相等。
+func Equal[T customTimeType](left, right T) bool {
+	switch leftValue := any(left).(type) {
+	case DateTime:
+		return leftValue.Time().Equal(any(right).(DateTime).Time())
+	case DateOnly:
+		return leftValue.Time().Equal(any(right).(DateOnly).Time())
+	case MonthDay:
+		return leftValue.Time().Equal(any(right).(MonthDay).Time())
+	case TimeOnly:
+		return leftValue.Time().Equal(any(right).(TimeOnly).Time())
+	case TimeHM:
+		return leftValue.Time().Equal(any(right).(TimeHM).Time())
+	default:
+		return false
+	}
 }
 
 func subTimeValue[T timeValuer](left, right T) time.Duration {
@@ -354,6 +396,21 @@ func (dt DateTime) IsZero() bool {
 	return isZeroCustomTime(dt)
 }
 
+// Before 用来判断当前日期时间是否早于另一个值。
+func (dt DateTime) Before(other DateTime) bool {
+	return Before(dt, other)
+}
+
+// After 用来判断当前日期时间是否晚于另一个值。
+func (dt DateTime) After(other DateTime) bool {
+	return After(dt, other)
+}
+
+// Equal 用来比较两个完整日期时间是否相等。
+func (dt DateTime) Equal(other DateTime) bool {
+	return Equal(dt, other)
+}
+
 // FormatRelativeDate 用来把日期描述为相对时间。
 func (dt DateTime) FormatRelativeDate() string {
 	return describeRelativeDateValue(dt)
@@ -394,6 +451,21 @@ func (d DateOnly) Time() time.Time {
 // IsZero 用来判断 DateOnly 是否为零值。
 func (d DateOnly) IsZero() bool {
 	return isZeroCustomTime(d)
+}
+
+// Before 用来判断当前日期是否早于另一个日期。
+func (d DateOnly) Before(other DateOnly) bool {
+	return Before(d, other)
+}
+
+// After 用来判断当前日期是否晚于另一个日期。
+func (d DateOnly) After(other DateOnly) bool {
+	return After(d, other)
+}
+
+// Equal 用来比较两个日期是否相等。
+func (d DateOnly) Equal(other DateOnly) bool {
+	return Equal(d, other)
 }
 
 // FormatRelativeDate 用来把日期描述为相对时间。
@@ -448,6 +520,21 @@ func (m MonthDay) IsZero() bool {
 	return isZeroCustomTime(m)
 }
 
+// Before 用来判断当前月日是否早于另一个月日。
+func (m MonthDay) Before(other MonthDay) bool {
+	return Before(m, other)
+}
+
+// After 用来判断当前月日是否晚于另一个月日。
+func (m MonthDay) After(other MonthDay) bool {
+	return After(m, other)
+}
+
+// Equal 用来比较两个月日是否相等。
+func (m MonthDay) Equal(other MonthDay) bool {
+	return Equal(m, other)
+}
+
 // ========== TimeOnly ==========
 
 // NewTimeOnly 用来创建只包含时间部分的值。
@@ -495,17 +582,17 @@ func (t TimeOnly) AddTime(hours, minutes, seconds int) TimeOnly {
 
 // Before 用来判断当前时间是否早于另一个时间。
 func (t TimeOnly) Before(other TimeOnly) bool {
-	return beforeTimeValue(t, other)
+	return Before(t, other)
 }
 
 // After 用来判断当前时间是否晚于另一个时间。
 func (t TimeOnly) After(other TimeOnly) bool {
-	return afterTimeValue(t, other)
+	return After(t, other)
 }
 
 // Equal 用来比较两个时间是否相同。
 func (t TimeOnly) Equal(other TimeOnly) bool {
-	return equalTimeValue(t, other)
+	return Equal(t, other)
 }
 
 // Sub 用来计算两个时间的时间差。
@@ -560,17 +647,17 @@ func (t TimeHM) AddTime(hours, minutes int) TimeHM {
 
 // Before 用来判断当前值是否早于另一个值。
 func (t TimeHM) Before(other TimeHM) bool {
-	return beforeTimeValue(t, other)
+	return Before(t, other)
 }
 
 // After 用来判断当前值是否晚于另一个值。
 func (t TimeHM) After(other TimeHM) bool {
-	return afterTimeValue(t, other)
+	return After(t, other)
 }
 
 // Equal 用来比较两个时刻是否相同。
 func (t TimeHM) Equal(other TimeHM) bool {
-	return equalTimeValue(t, other)
+	return Equal(t, other)
 }
 
 // Sub 用来计算两个小时分钟值之间的差。
