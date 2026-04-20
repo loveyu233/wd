@@ -49,6 +49,10 @@ func hasOptionalRangeValue[T CustomTime](start, end *T) bool {
 	return hasOptionalParsedValue(start) && hasOptionalParsedValue(end)
 }
 
+func normalizeKeyword(value string) string {
+	return strings.TrimSpace(value)
+}
+
 func validateOptionalRangeValue[T CustomTime](start, end *T) error {
 	if !hasOptionalRangeValue(start, end) {
 		return nil
@@ -71,14 +75,14 @@ type ReqKeyword struct {
 }
 
 func (req ReqKeyword) HasKeyword() bool {
-	return strings.TrimSpace(req.Keyword) != ""
+	return normalizeKeyword(req.Keyword) != ""
 }
 
 func (req ReqKeyword) LikePattern() string {
 	if !req.HasKeyword() {
 		return ""
 	}
-	return fmt.Sprintf("%%%s%%", strings.TrimSpace(req.Keyword))
+	return fmt.Sprintf("%%%s%%", normalizeKeyword(req.Keyword))
 }
 
 func (req ReqKeyword) Conditions(columns ...field.String) []gen.Condition {

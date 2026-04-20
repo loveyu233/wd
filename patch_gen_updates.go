@@ -133,74 +133,31 @@ func appendBuildGenUpdate(
 }
 
 func patchBuildAssignExpr(marker patchFieldValidationMarker, oldValue any, target any) (field.AssignExpr, bool, error) {
-	if !marker.patchFieldValidationSet() {
-		return nil, false, nil
-	}
-
 	oldInfo := parsePatchDynamicOldValue(oldValue)
 	resolvedTarget, err := resolvePatchDynamicTarget(target)
 	if err != nil {
 		return nil, false, err
 	}
 
-	if !oldInfo.known {
-		if marker.patchFieldValidationNull() {
-			if resolvedTarget.setNull == nil {
-				return nil, false, errors.New("目标字段不支持 Null()")
-			}
-			assignExpr, err := resolvedTarget.setNull()
-			if err != nil {
-				return nil, false, err
-			}
-			return assignExpr, true, nil
-		}
-		assignExpr, err := resolvedTarget.setValue(marker.patchFieldValidationValue())
-		if err != nil {
-			return nil, false, err
-		}
-		return assignExpr, true, nil
-	}
-
-	if oldInfo.nullable {
-		if marker.patchFieldValidationNull() {
-			if oldInfo.isNull {
-				return nil, false, nil
-			}
-			if resolvedTarget.setNull == nil {
-				return nil, false, errors.New("目标字段不支持 Null()")
-			}
-			assignExpr, err := resolvedTarget.setNull()
-			if err != nil {
-				return nil, false, err
-			}
-			return assignExpr, true, nil
-		}
-
-		newValue := marker.patchFieldValidationValue()
-		if !oldInfo.isNull && reflect.DeepEqual(oldInfo.value, newValue) {
-			return nil, false, nil
-		}
-		assignExpr, err := resolvedTarget.setValue(newValue)
-		if err != nil {
-			return nil, false, err
-		}
-		return assignExpr, true, nil
-	}
-
-	if marker.patchFieldValidationNull() {
-		return nil, false, nil
-	}
-
-	newValue := marker.patchFieldValidationValue()
-	if reflect.DeepEqual(oldInfo.value, newValue) {
-		return nil, false, nil
-	}
-
-	assignExpr, err := resolvedTarget.setValue(newValue)
-	if err != nil {
-		return nil, false, err
-	}
-	return assignExpr, true, nil
+	return patchApplyUpdate(
+		marker.patchFieldValidationSet(),
+		marker.patchFieldValidationNull(),
+		func() (any, bool) {
+			return marker.patchFieldValidationValue(), true
+		},
+		patchOldValueState{
+			known:    oldInfo.known,
+			value:    oldInfo.value,
+			nullable: oldInfo.nullable,
+			isNull:   oldInfo.isNull,
+		},
+		func(oldValue, newValue any) bool {
+			return reflect.DeepEqual(oldValue, newValue)
+		},
+		resolvedTarget.setValue,
+		resolvedTarget.setNull,
+		"目标字段不支持 Null()",
+	)
 }
 
 func resolvePatchDynamicTarget(target any) (patchResolvedDynamicTarget, error) {

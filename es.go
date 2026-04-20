@@ -2,7 +2,6 @@ package wd
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 
 	"github.com/elastic/go-elasticsearch/v9"
@@ -88,14 +87,14 @@ func (c *CustomEsClient) CustomBulkInsertData(data any) error {
 	if err != nil {
 		return err
 	}
-	return c.bulkIndexer.Add(context.Background(), esutil.BulkIndexerItem{
+	return c.bulkIndexer.Add(BackgroundContext(), esutil.BulkIndexerItem{
 		Action: "index",
 		Body:   bytes.NewReader(marshal),
 	})
 }
 
 func (c *CustomEsClient) CustomBulkClose() error {
-	return c.bulkIndexer.Close(context.Background())
+	return c.bulkIndexer.Close(BackgroundContext())
 }
 
 func (c *CustomEsClient) CustomBulkStats() esutil.BulkIndexerStats {
@@ -103,7 +102,7 @@ func (c *CustomEsClient) CustomBulkStats() esutil.BulkIndexerStats {
 }
 
 func (c *CustomEsClient) Write(p []byte) (n int, err error) {
-	if err := c.bulkIndexer.Add(context.Background(), esutil.BulkIndexerItem{
+	if err := c.bulkIndexer.Add(BackgroundContext(), esutil.BulkIndexerItem{
 		Action: "index",
 		Body:   bytes.NewReader(p),
 	}); err != nil {

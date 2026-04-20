@@ -367,7 +367,7 @@ const (
 // ContextWithRequestLogger 将请求级日志器注入到 context.Context 中，方便链路外部（例如gorm）取用。
 func ContextWithRequestLogger(ctx context.Context, rl *RequestLogger) context.Context {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = BackgroundContext()
 	}
 	return context.WithValue(ctx, RequestLoggerKey, rl)
 }

@@ -36,44 +36,84 @@ func R() *resty.Request {
 	return RestyClient().R()
 }
 
-// RPost 快捷的post请求，参数headers为请求头，body为请求体，url为请求地址，value为返回值必须是指针，token按需传递
-func RPost(headers map[string]string, body interface{}, url string, value any, token ...string) error {
+type restySendFunc func(*resty.Request) (*resty.Response, error)
+
+func validatePointerTarget(value any) error {
 	if !IsPtr(value) {
 		return errors.New("value必须是一个指针")
 	}
-	request := R().SetHeaders(headers).SetBody(body)
-	if len(token) > 0 {
-		request = setRequestAuthToken(request, token[0])
+	return nil
+}
+
+func decodeJSONResponse(prefix string, resp *resty.Response, value any) error {
+	if resp.StatusCode() != http.StatusOK {
+		return newResponseStatusError(prefix, resp)
 	}
-	resp, err := request.Post(url)
+	return json.Unmarshal(resp.Body(), value)
+}
+
+func executeJSONRequest(
+	prefix string,
+	value any,
+	token string,
+	configure func(*resty.Request) *resty.Request,
+	send restySendFunc,
+) error {
+	if err := validatePointerTarget(value); err != nil {
+		return err
+	}
+
+	request := R()
+	if configure != nil {
+		request = configure(request)
+	}
+	if token != "" {
+		request = setRequestAuthToken(request, token)
+	}
+
+	resp, err := send(request)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode() != http.StatusOK {
-		return newResponseStatusError("请求失败", resp)
-	}
+	return decodeJSONResponse(prefix, resp, value)
+}
 
-	return json.Unmarshal(resp.Body(), value)
+// RPost 快捷的post请求，参数headers为请求头，body为请求体，url为请求地址，value为返回值必须是指针，token按需传递
+func RPost(headers map[string]string, body interface{}, url string, value any, token ...string) error {
+	var authToken string
+	if len(token) > 0 {
+		authToken = token[0]
+	}
+	return executeJSONRequest(
+		"请求失败",
+		value,
+		authToken,
+		func(request *resty.Request) *resty.Request {
+			return request.SetHeaders(headers).SetBody(body)
+		},
+		func(request *resty.Request) (*resty.Response, error) {
+			return request.Post(url)
+		},
+	)
 }
 
 // RGet 快捷的get请求，参数headers为请求头，query为请求体，url为请求地址，value为返回值必须是指针，token按需传递
 func RGet(headers map[string]string, query map[string]string, url string, value any, token ...string) error {
-	if !IsPtr(value) {
-		return errors.New("value必须是一个指针")
-	}
-	request := R().SetHeaders(headers).SetQueryParams(query)
+	var authToken string
 	if len(token) > 0 {
-		request = setRequestAuthToken(request, token[0])
+		authToken = token[0]
 	}
-	resp, err := request.Get(url)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return newResponseStatusError("请求失败", resp)
-	}
-
-	return json.Unmarshal(resp.Body(), value)
+	return executeJSONRequest(
+		"请求失败",
+		value,
+		authToken,
+		func(request *resty.Request) *resty.Request {
+			return request.SetHeaders(headers).SetQueryParams(query)
+		},
+		func(request *resty.Request) (*resty.Response, error) {
+			return request.Get(url)
+		},
+	)
 }
 
 func setRequestAuthToken(request *resty.Request, token string) *resty.Request {

@@ -214,29 +214,22 @@ func (m *ExcelMapper) getStructInfo(elemType reflect.Type) (*structInfo, error) 
 	}
 
 	for i := range elemType.NumField() {
-		field := elemType.Field(i)
-		tag := field.Tag.Get(TagExcel)
-		if tag == "" || tag == "-" {
+		fieldMeta := parseExcelStructField(elemType.Field(i), i)
+		if !fieldMeta.ok {
 			continue
 		}
 
-		fieldType := field.Type
-		isPointer := fieldType.Kind() == reflect.Ptr
-		if isPointer {
-			fieldType = fieldType.Elem()
-		}
-
-		converter := m.getConverter(fieldType)
+		converter := m.getConverter(fieldMeta.fieldType)
 		if converter == nil {
-			return nil, fmt.Errorf("不支持的字段类型: %v", fieldType)
+			return nil, fmt.Errorf("不支持的字段类型: %v", fieldMeta.fieldType)
 		}
 
 		info.fields = append(info.fields, fieldInfo{
-			index:     i,
-			name:      field.Name,
-			tag:       tag,
-			fieldType: fieldType,
-			isPointer: isPointer,
+			index:     fieldMeta.index,
+			name:      fieldMeta.name,
+			tag:       fieldMeta.tag,
+			fieldType: fieldMeta.fieldType,
+			isPointer: fieldMeta.isPointer,
 			converter: converter,
 		})
 	}
@@ -315,28 +308,11 @@ func (m *ExcelMapper) findColumnIndex(headers []string, tag string) int {
 	}
 
 	// 检查是否为Excel列名 (A, B, AA等)
-	if colIndex := m.parseExcelColumn(tag); colIndex >= 0 && colIndex < len(headers) {
+	if colIndex := int(ExcelColumnToIndex(tag)); colIndex >= 0 && colIndex < len(headers) {
 		return colIndex
 	}
 
 	return -1
-}
-
-// parseExcelColumn 用来把 Excel 列名转换为索引。
-func (m *ExcelMapper) parseExcelColumn(col string) int {
-	col = strings.ToUpper(strings.TrimSpace(col))
-	if col == "" {
-		return -1
-	}
-
-	result := 0
-	for _, char := range col {
-		if char < 'A' || char > 'Z' {
-			return -1
-		}
-		result = result*26 + int(char-'A'+1)
-	}
-	return result - 1
 }
 
 // processDataRows 用来批量解析 Excel 行数据并填充切片。

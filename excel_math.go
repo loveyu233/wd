@@ -2,7 +2,40 @@ package wd
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
+
+type excelTagOptions struct {
+	columnName  string
+	columnTitle string
+	ok          bool
+}
+
+func parseExcelTag(tag string) excelTagOptions {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || tag == "-" {
+		return excelTagOptions{}
+	}
+
+	parts := strings.Split(tag, ",")
+	columnName := strings.TrimSpace(parts[0])
+	if columnName == "" {
+		return excelTagOptions{}
+	}
+
+	options := excelTagOptions{
+		columnName:  columnName,
+		columnTitle: columnName,
+		ok:          true,
+	}
+	for _, part := range parts[1:] {
+		if strings.HasPrefix(part, "title:") {
+			options.columnTitle = strings.TrimSpace(strings.TrimPrefix(part, "title:"))
+		}
+	}
+	return options
+}
 
 // ExcelGetPosition 用来把行列索引转换为 Excel 坐标字符串。
 func ExcelGetPosition(row, col int) string {
@@ -22,6 +55,23 @@ func ExcelGetPosition(row, col int) string {
 	buf = appendInt64(buf, row+1)
 
 	return string(buf)
+}
+
+// ExcelColumnName 用来把列索引转换为 Excel 列字母。
+func ExcelColumnName(col int) string {
+	if col < 0 {
+		return ""
+	}
+	buf := appendExcelColumn(make([]byte, 0, 4), col)
+	return string(buf)
+}
+
+// ExcelGetPositionOneBased 用来把 1 基行号和 0 基列号转换为 Excel 坐标。
+func ExcelGetPositionOneBased(row, col int) string {
+	if row <= 0 {
+		return ""
+	}
+	return ExcelColumnName(col) + strconv.Itoa(row)
 }
 
 // appendExcelColumn 用来把列索引编码成 Excel 列字母。
@@ -112,6 +162,10 @@ func ExcelGetPositionBatch(positions []struct{ Row, Col int }) []string {
 
 // ExcelColumnToIndex 用来把 Excel 列字母转换为索引。
 func ExcelColumnToIndex(col string) int64 {
+	col = strings.ToUpper(strings.TrimSpace(col))
+	if col == "" {
+		return -1
+	}
 	var result int64
 	for _, char := range col {
 		if char < 'A' || char > 'Z' {

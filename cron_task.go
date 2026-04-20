@@ -29,15 +29,21 @@ func (cron *CronConfig) redisKey(id any) string {
 	return fmt.Sprintf("cron-%v-lock", id)
 }
 
-// RunJobTheOne 用来在持有 Redis 锁时才注册任务，避免重复调度。
-func (cron *CronConfig) RunJobTheOne(id any, df gocron.JobDefinition, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
+func (cron *CronConfig) runJobWithRedisLock(id any, create func() (gocron.Job, error)) (gocron.Job, error) {
 	if InsRedis == nil {
 		return nil, redisClientNilErr()
 	}
 	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
-		return cron.Scheduler.NewJob(df, task, options...)
+		return create()
 	}
 	return nil, nil
+}
+
+// RunJobTheOne 用来在持有 Redis 锁时才注册任务，避免重复调度。
+func (cron *CronConfig) RunJobTheOne(id any, df gocron.JobDefinition, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
+		return cron.Scheduler.NewJob(df, task, options...)
+	})
 }
 
 // RunJobEveryDuration 用来按固定间隔周期执行任务。
@@ -51,17 +57,13 @@ func (cron *CronConfig) RunJobEveryDuration(duration time.Duration, task gocron.
 
 // RunJobEveryDurationTheOne 用来在加锁后以固定间隔执行任务。
 func (cron *CronConfig) RunJobEveryDurationTheOne(id any, duration time.Duration, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
-	if InsRedis == nil {
-		return nil, redisClientNilErr()
-	}
-	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
 		return cron.Scheduler.NewJob(
 			gocron.DurationJob(duration),
 			task,
 			options...,
 		)
-	}
-	return nil, nil
+	})
 }
 
 // RunJobAtTime 用来在指定时间运行一次任务。
@@ -71,14 +73,9 @@ func (cron *CronConfig) RunJobAtTime(time time.Time, task gocron.Task, options .
 
 // RunJobAtTimeTheOne 用来加锁后在指定时间运行一次任务。
 func (cron *CronConfig) RunJobAtTimeTheOne(id any, time time.Time, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
-	if InsRedis == nil {
-		return nil, redisClientNilErr()
-	}
-	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
 		return cron.Scheduler.NewJob(gocron.OneTimeJob(gocron.OneTimeJobStartDateTime(time)), task, options...)
-	}
-	return nil, nil
-
+	})
 }
 
 // RunJobAtTimes 用来在多个指定时间各运行一次任务。
@@ -88,13 +85,9 @@ func (cron *CronConfig) RunJobAtTimes(times []time.Time, task gocron.Task, optio
 
 // RunJobAtTimesTheOne 用来在持锁情况下在多个时间执行任务。
 func (cron *CronConfig) RunJobAtTimesTheOne(id any, times []time.Time, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
-	if InsRedis == nil {
-		return nil, redisClientNilErr()
-	}
-	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
 		return cron.Scheduler.NewJob(gocron.OneTimeJob(gocron.OneTimeJobStartDateTimes(times...)), task, options...)
-	}
-	return nil, nil
+	})
 }
 
 // RunJobEveryDay 用来按每天固定时间段执行任务。
@@ -110,10 +103,7 @@ func (cron *CronConfig) RunJobEveryDay(hours, minutes, seconds, interval uint, t
 
 // RunJobEveryDayTheOne 用来在加锁后每天固定时刻执行任务。
 func (cron *CronConfig) RunJobEveryDayTheOne(id any, hours, minutes, seconds, interval uint, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
-	if InsRedis == nil {
-		return nil, redisClientNilErr()
-	}
-	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
 		return cron.Scheduler.NewJob(
 			gocron.DailyJob(interval, gocron.NewAtTimes(
 				gocron.NewAtTime(hours, minutes, seconds),
@@ -121,8 +111,7 @@ func (cron *CronConfig) RunJobEveryDayTheOne(id any, hours, minutes, seconds, in
 			task,
 			options...,
 		)
-	}
-	return nil, nil
+	})
 }
 
 // RunJobCrontab 用来根据 cron 表达式调度任务。
@@ -136,17 +125,13 @@ func (cron *CronConfig) RunJobCrontab(crontab string, withSeconds bool, task goc
 
 // RunJobCrontabTheOne 用来在锁定后按 cron 表达式调度任务。
 func (cron *CronConfig) RunJobCrontabTheOne(id any, crontab string, withSeconds bool, task gocron.Task, options ...gocron.JobOption) (gocron.Job, error) {
-	if InsRedis == nil {
-		return nil, redisClientNilErr()
-	}
-	if err := InsRedis.NewLock(cron.redisKey(id)).TryLock(); err == nil {
+	return cron.runJobWithRedisLock(id, func() (gocron.Job, error) {
 		return cron.Scheduler.NewJob(
 			gocron.CronJob(crontab, withSeconds),
 			task,
 			options...,
 		)
-	}
-	return nil, nil
+	})
 }
 
 type CronOption func(*CronConfig)

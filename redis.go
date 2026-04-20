@@ -280,7 +280,7 @@ func InitRedis(ops ...WithRedisOption) error {
 		panic("redis address is empty")
 	}
 	InsRedis.UniversalClient = redis.NewUniversalClient(opts)
-	return InsRedis.UniversalClient.Ping(context.Background()).Err()
+	return InsRedis.UniversalClient.Ping(BackgroundContext()).Err()
 }
 
 // NewLock 用来基于 redsync 创建分布式锁。
@@ -319,15 +319,15 @@ func (r *RedisConfig) FindAllBitMapByTargetValue(key string, targetValue byte) (
 
 // SetCaptcha 用来在 Redis 中缓存验证码。
 func (r *RedisConfig) SetCaptcha(key string, value any, expiration time.Duration) error {
-	return r.SetNX(context.Background(), key, value, expiration).Err()
+	return r.SetNX(BackgroundContext(), key, value, expiration).Err()
 }
 
 // GetCaptcha 用来读取缓存的验证码。
 func (r *RedisConfig) GetCaptcha(key string) (string, error) {
-	return r.Get(context.Background(), key).Result()
+	return r.Get(BackgroundContext(), key).Result()
 }
 
 // DelCaptcha 用来删除验证码缓存。
 func (r *RedisConfig) DelCaptcha(key string) error {
-	return r.Del(context.Background(), key).Err()
+	return r.Del(BackgroundContext(), key).Err()
 }

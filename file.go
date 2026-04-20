@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -169,8 +170,8 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 		}
 	}
 
-	if req.resp == nil || !IsPtr(req.resp) {
-		return errors.New("value必须为指针")
+	if err := validatePointerTarget(req.resp); err != nil {
+		return err
 	}
 	if req.fileValue == nil {
 		return errors.New("file为空")
@@ -195,26 +196,20 @@ func UploadFileToTargetURL(options ...UploadFileOption) error {
 		return err
 	}
 	defer open.Close()
-	request := R().
-		SetFileReader(req.fileKey, req.FileName, open).
-		SetFormData(req.OtherParams)
-
-	if req.token != "" {
-		request = setRequestAuthToken(request, req.token)
-	}
-	if len(req.Headers) > 0 {
-		request = request.SetHeaders(req.Headers)
-	}
-
-	resp, err := request.
-		Post(req.url)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return newResponseStatusError("上传失败", resp)
-	}
-
-	return json.Unmarshal(resp.Body(), req.resp)
+	return executeJSONRequest(
+		"上传失败",
+		req.resp,
+		req.token,
+		func(request *resty.Request) *resty.Request {
+			request = request.SetFileReader(req.fileKey, req.FileName, open).
+				SetFormData(req.OtherParams)
+			if len(req.Headers) > 0 {
+				request = request.SetHeaders(req.Headers)
+			}
+			return request
+		},
+		func(request *resty.Request) (*resty.Response, error) {
+			return request.Post(req.url)
+		},
+	)
 }

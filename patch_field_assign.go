@@ -61,10 +61,6 @@ func PatchUpdateBy[T any](patch Field[T], oldValue any, target any, equal PatchE
 }
 
 func patchUpdateWithEqual[T any](patch Field[T], oldValue any, target any, equal PatchEqualFunc[T], setNull func() field.AssignExpr) (field.AssignExpr, bool, error) {
-	if !patch.Set {
-		return nil, false, nil
-	}
-
 	if equal == nil {
 		equal = defaultPatchEqual[T]
 	}
@@ -82,44 +78,36 @@ func patchUpdateWithEqual[T any](patch Field[T], oldValue any, target any, equal
 		resolvedTarget.setNull = setNull
 	}
 
-	if oldInfo.nullable {
-		if patch.Null {
-			if oldInfo.isNull {
-				return nil, false, nil
+	return patchApplyUpdate(
+		patch.Set,
+		patch.Null,
+		func() (any, bool) {
+			ok, value := patch.HasValue()
+			if !ok {
+				return nil, false
 			}
+			return value, true
+		},
+		patchOldValueState{
+			known:    true,
+			value:    oldInfo.value,
+			nullable: oldInfo.nullable,
+			isNull:   oldInfo.isNull,
+		},
+		func(oldValue, newValue any) bool {
+			return equal(oldValue.(T), newValue.(T))
+		},
+		func(value any) (field.AssignExpr, error) {
+			return resolvedTarget.setValue(value.(T))
+		},
+		func() (field.AssignExpr, error) {
 			if resolvedTarget.setNull == nil {
-				return nil, false, errors.New("可空字段必须提供 setNull 或目标字段支持 Null()")
+				return nil, errors.New("可空字段必须提供 setNull 或目标字段支持 Null()")
 			}
-			return resolvedTarget.setNull(), true, nil
-		}
-
-		ok, value := patch.HasValue()
-		if !ok {
-			return nil, false, nil
-		}
-		if !oldInfo.isNull && equal(oldInfo.value, value) {
-			return nil, false, nil
-		}
-		assignExpr, err := resolvedTarget.setValue(value)
-		if err != nil {
-			return nil, false, err
-		}
-		return assignExpr, true, nil
-	}
-
-	ok, value := patch.HasValue()
-	if !ok {
-		return nil, false, nil
-	}
-	if equal(oldInfo.value, value) {
-		return nil, false, nil
-	}
-
-	assignExpr, err := resolvedTarget.setValue(value)
-	if err != nil {
-		return nil, false, err
-	}
-	return assignExpr, true, nil
+			return resolvedTarget.setNull(), nil
+		},
+		"可空字段必须提供 setNull 或目标字段支持 Null()",
+	)
 }
 
 func resolvePatchTarget[T any](target any) (patchResolvedTarget[T], error) {

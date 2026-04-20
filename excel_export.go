@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -321,40 +319,20 @@ func (e *ExcelExporter) getExportStructInfo(elemType reflect.Type) (*exportStruc
 
 	columnIndex := 0
 	for i := range elemType.NumField() {
-		field := elemType.Field(i)
-		tag := field.Tag.Get(TagExcel)
-
-		if tag == "" || tag == "-" {
+		fieldMeta := parseExcelStructField(elemType.Field(i), i)
+		if !fieldMeta.ok {
 			continue
 		}
 
-		// 解析标签，支持 "列名" 或 "列名,title:显示标题"
-		parts := strings.Split(tag, ",")
-		columnName := strings.TrimSpace(parts[0])
-		columnTitle := columnName
-
-		// 解析额外选项
-		for _, part := range parts[1:] {
-			if strings.HasPrefix(part, "title:") {
-				columnTitle = strings.TrimSpace(strings.TrimPrefix(part, "title:"))
-			}
-		}
-
-		fieldType := field.Type
-		isPointer := fieldType.Kind() == reflect.Ptr
-		if isPointer {
-			fieldType = fieldType.Elem()
-		}
-
-		formatter := e.getFormatter(fieldType, isPointer)
+		formatter := e.getFormatter(fieldMeta.fieldType, fieldMeta.isPointer)
 
 		info.fields = append(info.fields, exportFieldInfo{
-			index:       i,
-			name:        field.Name,
-			tag:         columnName,
-			columnTitle: columnTitle,
-			fieldType:   fieldType,
-			isPointer:   isPointer,
+			index:       fieldMeta.index,
+			name:        fieldMeta.name,
+			tag:         fieldMeta.tag,
+			columnTitle: fieldMeta.columnTitle,
+			fieldType:   fieldMeta.fieldType,
+			isPointer:   fieldMeta.isPointer,
 			formatter:   formatter,
 			columnIndex: columnIndex,
 		})
@@ -502,26 +480,12 @@ func (e *ExcelExporter) writeBatch(file *excelize.File, sheetName string,
 
 // getCellName 用来把行列索引转换成单元格名称。
 func (e *ExcelExporter) getCellName(row, col int) string {
-	return e.getColumnName(col) + strconv.Itoa(row)
+	return ExcelGetPositionOneBased(row, col)
 }
 
 // getColumnName 用来把列索引转换为 Excel 列字母。
 func (e *ExcelExporter) getColumnName(col int) string {
-	if col < 26 {
-		return string(rune('A' + col))
-	}
-
-	var result []byte
-	for col >= 0 {
-		remainder := col % 26
-		result = append([]byte{byte('A' + remainder)}, result...)
-		col = col/26 - 1
-		if col < 0 {
-			break
-		}
-	}
-
-	return string(result)
+	return ExcelColumnName(col)
 }
 
 // createHeaderStyle 用来根据配置生成表头样式。

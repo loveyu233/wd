@@ -1,7 +1,6 @@
 package wd
 
 import (
-	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -112,7 +111,7 @@ func (h *HTTPServer) Wait() error {
 // setupGracefulShutdown 用来注册系统信号以优雅关闭服务。
 func (h *HTTPServer) setupGracefulShutdown() {
 	InsGlobalHook.AppendFun(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		ctx, cancel := BackgroundTimeout(10 * time.Second)
 		defer cancel()
 		if err := h.server.Shutdown(ctx); err != nil {
 			log.Printf("http close err: %s\n", err)
