@@ -279,6 +279,11 @@ func castDecimal(value any) (decimal.Decimal, error) {
 	switch typed := value.(type) {
 	case decimal.Decimal:
 		return typed, nil
+	case *decimal.Decimal:
+		if typed == nil {
+			return decimal.Decimal{}, fmt.Errorf("无法将 <nil> 转换为 decimal.Decimal")
+		}
+		return decimal.Decimal{}, fmt.Errorf("无法将 %T 转换为 decimal.Decimal", value)
 	case string:
 		return decimal.NewFromString(strings.TrimSpace(typed))
 	case []byte:
