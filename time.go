@@ -19,7 +19,9 @@ type timeNormalizer func(time.Time) time.Time
 type stringTimeParser func(string) (time.Time, error)
 type customTimeType interface {
 	DateTime | DateOnly | MonthDay | TimeOnly | TimeHM
+	Time() time.Time
 }
+
 type timeValuer interface {
 	Time() time.Time
 }
@@ -221,72 +223,19 @@ func addDurationToCustomTime[T timeValuer](value T, delta time.Duration, convert
 }
 
 func compareTime[T customTimeType](left, right T) int {
-	switch leftValue := any(left).(type) {
-	case DateTime:
-		rightValue := any(right).(DateTime)
-		if leftValue.Time().Before(rightValue.Time()) {
-			return -1
-		}
-		if leftValue.Time().After(rightValue.Time()) {
-			return 1
-		}
-		return 0
-	case DateOnly:
-		rightValue := any(right).(DateOnly)
-		if leftValue.Time().Before(rightValue.Time()) {
-			return -1
-		}
-		if leftValue.Time().After(rightValue.Time()) {
-			return 1
-		}
-		return 0
-	case MonthDay:
-		rightValue := any(right).(MonthDay)
-		if leftValue.Time().Before(rightValue.Time()) {
-			return -1
-		}
-		if leftValue.Time().After(rightValue.Time()) {
-			return 1
-		}
-		return 0
-	case TimeOnly:
-		rightValue := any(right).(TimeOnly)
-		if leftValue.Time().Before(rightValue.Time()) {
-			return -1
-		}
-		if leftValue.Time().After(rightValue.Time()) {
-			return 1
-		}
-		return 0
-	case TimeHM:
-		rightValue := any(right).(TimeHM)
-		if leftValue.Time().Before(rightValue.Time()) {
-			return -1
-		}
-		if leftValue.Time().After(rightValue.Time()) {
-			return 1
-		}
-		return 0
-	default:
-		return 0
+	leftTime := left.Time()
+	rightTime := right.Time()
+	if leftTime.Before(rightTime) {
+		return -1
 	}
+	if leftTime.After(rightTime) {
+		return 1
+	}
+	return 0
 }
 
 func subCustomTime[T customTimeType](left, right T) time.Duration {
-	switch leftValue := any(left).(type) {
-	case DateTime:
-		return leftValue.Time().Sub(any(right).(DateTime).Time())
-	case DateOnly:
-		return leftValue.Time().Sub(any(right).(DateOnly).Time())
-	case MonthDay:
-		return leftValue.Time().Sub(any(right).(MonthDay).Time())
-	case TimeOnly:
-		return leftValue.Time().Sub(any(right).(TimeOnly).Time())
-	case TimeHM:
-		return leftValue.Time().Sub(any(right).(TimeHM).Time())
-	default:
-		return 0
-	}
+	return left.Time().Sub(right.Time())
 }
 
 // Compare 根据自定义时间类型的语义比较两个值，返回 -1/0/1。
