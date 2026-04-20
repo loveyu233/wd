@@ -13,17 +13,11 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/rs/xid"
 )
 
 // GetUUID 用来生成一个标准的 UUID 字符串。
 func GetUUID() string {
 	return uuid.NewString()
-}
-
-// GetXID 用来生成紧凑的 XID。
-func GetXID() string {
-	return xid.New().String()
 }
 
 const envSnowflakeWorkerID = "WD_SNOWFLAKE_WORKER_ID"

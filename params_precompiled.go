@@ -6,9 +6,8 @@ import (
 	"io"
 	"mime/multipart"
 	"strings"
+	"sync"
 
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/semaphore"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
 	"gorm.io/gorm/schema"
@@ -165,38 +164,77 @@ func FilesUploadGoroutine(ctx context.Context, files []*multipart.FileHeader, up
 	}
 
 	var (
-		weighted = semaphore.NewWeighted(sem[0])
+		limit    = int(sem[0])
 		fileChan = make(chan successItem, len(files))
 	)
 	success = make(map[string]string)
 
-	g := new(errgroup.Group)
+	if limit <= 0 {
+		limit = 1
+	}
+
+	workerChan := make(chan struct{}, limit)
+	errChan := make(chan error, 1)
+	var wg sync.WaitGroup
 	for _, fileHeader := range files {
-		g.Go(func() error {
-			if ctxErr := weighted.Acquire(ctx, 1); err != nil {
-				return ctxErr
+		fileHeader := fileHeader
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				sendUploadError(errChan, ctx.Err())
+				return
+			case workerChan <- struct{}{}:
 			}
-			defer weighted.Release(1)
-			fileFunc, err := uploadFileFunc(fileHeader)
-			if err != nil {
-				return err
+			defer func() { <-workerChan }()
+
+			fileFunc, uploadErr := uploadFileFunc(fileHeader)
+			if uploadErr != nil {
+				sendUploadError(errChan, uploadErr)
+				return
 			}
-			fileChan <- successItem{
+
+			select {
+			case <-ctx.Done():
+				sendUploadError(errChan, ctx.Err())
+			case fileChan <- successItem{
 				Filename: fileHeader.Filename,
 				Url:      fileFunc,
+			}:
 			}
-			return nil
-		})
+		}()
 	}
-	err = g.Wait()
+	wg.Wait()
 	close(fileChan)
-	if err != nil {
+	close(errChan)
+	if err = firstUploadError(errChan); err != nil {
 		return
 	}
 	for ele := range fileChan {
 		success[ele.Filename] = ele.Url
 	}
 	return
+}
+
+func sendUploadError(errChan chan error, err error) {
+	if err == nil {
+		return
+	}
+	select {
+	case errChan <- err:
+	default:
+	}
+}
+
+func firstUploadError(errChan chan error) error {
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type ReqFile struct {

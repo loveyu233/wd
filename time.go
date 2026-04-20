@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/araddon/dateparse"
 )
 
 // ========== 基础配置 ==========
@@ -801,11 +799,6 @@ func ParseDateAndTimePointer(date string, hourMinuteSecond string) (*time.Time, 
 // FormatDateTime 以标准格式输出 time.Time。
 func FormatDateTime(t time.Time) string {
 	return formatTimeValue(t, CSTLayout)
-}
-
-// ParseFuzzyTime 使用 dateparse 模糊解析时间。
-func ParseFuzzyTime(value string) (time.Time, error) {
-	return dateparse.ParseIn(value, ShangHaiTimeLocation)
 }
 
 // FormatDateTimePointer 安全地格式化 time.Time 指针。

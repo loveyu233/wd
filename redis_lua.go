@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/spf13/cast"
 )
 
 type item struct {
@@ -60,7 +59,7 @@ func runLuaInt64(r *RedisConfig, script string, keys []string, args ...any) (int
 	if err != nil {
 		return 0, err
 	}
-	return cast.ToInt64(result), nil
+	return Cast[int64](result)
 }
 
 // LuaRedisZSetGetTargetKeyAndStartToEndRankByScoreAndGetHashValue 用来查询 zset 范围并附带目标成员及哈希值。

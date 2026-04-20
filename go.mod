@@ -8,7 +8,6 @@ require (
 	github.com/alibabacloud-go/tea v1.4.0
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.9
 	github.com/aliyun/credentials-go v1.4.12
-	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/casbin/gorm-adapter/v3 v3.41.0
 	github.com/elastic/go-elasticsearch/v9 v9.3.1
@@ -22,19 +21,11 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/r3labs/diff/v3 v3.0.2
 	github.com/redis/go-redis/v9 v9.18.0
-	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.35.0
-	github.com/samber/lo v1.53.0
-	github.com/sergi/go-diff v1.4.0
 	github.com/shopspring/decimal v1.4.0
-	github.com/spf13/cast v1.10.0
-	github.com/tidwall/gjson v1.18.0
 	github.com/xuri/excelize/v2 v2.10.1
 	golang.org/x/crypto v0.50.0
-	golang.org/x/net v0.53.0
-	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/mysql v1.6.0
@@ -96,14 +87,10 @@ require (
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	github.com/tidwall/match v1.2.0 // indirect
-	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.1 // indirect
@@ -115,6 +102,8 @@ require (
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/image v0.39.0 // indirect
 	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
