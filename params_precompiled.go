@@ -182,6 +182,11 @@ func FilesUploadGoroutine(ctx context.Context, files []*multipart.FileHeader, up
 		go func() {
 			defer wg.Done()
 
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				sendUploadError(errChan, ctxErr)
+				return
+			}
+
 			select {
 			case <-ctx.Done():
 				sendUploadError(errChan, ctx.Err())
@@ -189,6 +194,11 @@ func FilesUploadGoroutine(ctx context.Context, files []*multipart.FileHeader, up
 			case workerChan <- struct{}{}:
 			}
 			defer func() { <-workerChan }()
+
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				sendUploadError(errChan, ctxErr)
+				return
+			}
 
 			fileFunc, uploadErr := uploadFileFunc(fileHeader)
 			if uploadErr != nil {
