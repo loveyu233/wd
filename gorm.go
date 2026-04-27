@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	stdmysql "github.com/go-sql-driver/mysql"
 	"github.com/rs/zerolog"
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -55,13 +56,13 @@ type GormConnConfig struct {
 
 // InitGormDB 用来根据配置初始化全局 GORM 连接。
 func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) error {
-	dsnCfg, err := buildMySQLDSNConfig(gcc)
+	dsn, err := buildMySQLDSN(gcc)
 	if err != nil {
 		return err
 	}
 
 	db, err := gorm.Open(
-		gormmysql.Open(dsnCfg.FormatDSN()),
+		gormmysql.Open(dsn),
 		&gorm.Config{
 			Logger:                 gormLogger,
 			TranslateError:         true,
@@ -85,14 +86,12 @@ func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db 
 	return nil
 }
 
-func buildMySQLDSNConfig(gcc GormConnConfig) (*stdmysql.Config, error) {
-	dsnCfg := stdmysql.NewConfig()
-	dsnCfg.User = gcc.Username
-	dsnCfg.Passwd = gcc.Password
-	dsnCfg.Net = "tcp"
-	dsnCfg.Addr = fmt.Sprintf("%s:%d", gcc.Host, gcc.Port)
-	dsnCfg.DBName = gcc.Database
-	applyDefaultMySQLDSNConfig(dsnCfg)
+func buildMySQLDSN(gcc GormConnConfig) (string, error) {
+	params := map[string]string{
+		"charset":   defaultMySQLCharset,
+		"parseTime": "true",
+		"loc":       ShangHaiTimeLocation.String(),
+	}
 
 	for key, value := range gcc.Params {
 		if value == nil {
@@ -106,33 +105,38 @@ func buildMySQLDSNConfig(gcc GormConnConfig) (*stdmysql.Config, error) {
 
 		switch strings.ToLower(strings.TrimSpace(key)) {
 		case "charset":
-			dsnCfg.Params["charset"] = rawValue
+			params["charset"] = rawValue
 		case "parsetime":
 			parseTime, err := parseMySQLBoolParam(rawValue)
 			if err != nil {
-				return nil, fmt.Errorf("mysql 参数 parseTime 无效: %w", err)
+				return "", fmt.Errorf("mysql 参数 parseTime 无效: %w", err)
 			}
-			dsnCfg.ParseTime = parseTime
+			params["parseTime"] = strconv.FormatBool(parseTime)
 		case "loc":
 			loc, err := parseMySQLLocation(rawValue)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
-			dsnCfg.Loc = loc
+			params["loc"] = loc.String()
 		default:
-			dsnCfg.Params[key] = rawValue
+			params[key] = rawValue
 		}
 	}
 
-	return dsnCfg, nil
-}
-
-func applyDefaultMySQLDSNConfig(dsnCfg *stdmysql.Config) {
-	dsnCfg.ParseTime = true
-	dsnCfg.Loc = ShangHaiTimeLocation
-	dsnCfg.Params = map[string]string{
-		"charset": defaultMySQLCharset,
+	paramPairs := make([]string, 0, len(params))
+	for _, key := range sortedStringKeys(params) {
+		paramPairs = append(paramPairs, fmt.Sprintf("%s=%s", key, url.QueryEscape(params[key])))
 	}
+
+	return fmt.Sprintf(
+		"%s:%s@tcp(%s:%d)/%s?%s",
+		gcc.Username,
+		gcc.Password,
+		gcc.Host,
+		gcc.Port,
+		url.PathEscape(gcc.Database),
+		strings.Join(paramPairs, "&"),
+	), nil
 }
 
 func parseMySQLBoolParam(value any) (bool, error) {
@@ -182,6 +186,15 @@ func parseMySQLLocation(value any) (*time.Location, error) {
 		}
 		return loc, nil
 	}
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // GormDefaultLogger 用来生成带默认阈值的 GORM 日志器。
