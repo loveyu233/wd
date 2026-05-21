@@ -11,21 +11,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var (
-	InsCasbin *CachedEnforcer
-)
-
 type CachedEnforcer struct {
 	*casbin.CachedEnforcer
+	db *GormClient
 }
 
-func InitCasbin() error {
-	if InsDB == nil {
-		return gormClientNilErr()
+func InitCasbin(db *GormClient) (*CachedEnforcer, error) {
+	if db == nil || db.DB == nil {
+		return nil, gormClientNilErr()
 	}
-	adapter, err := gormadapter.NewAdapterByDB(InsDB.DB)
+	adapter, err := gormadapter.NewAdapterByDB(db.DB)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	file, err := model.NewModelFromString(`[request_definition]
 		r = sub, obj, act
@@ -40,31 +37,30 @@ func InitCasbin() error {
 		e = some(where (p.eft == allow))
 		
 		[matchers]
-		m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)`)
+	m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)`)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 	e, err := casbin.NewCachedEnforcer(file, adapter)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	InsCasbin = &CachedEnforcer{e}
-	return nil
+	return &CachedEnforcer{CachedEnforcer: e, db: db}, nil
 }
 
 // InitCasbinRule 在数据库中创建casbin rule表，如果mandatory为true则会强制创建，否则则会先去检查是否存在，不存在则不创建
 func (e *CachedEnforcer) InitCasbinRule(mandatory ...bool) error {
-	if InsDB == nil {
+	if e == nil || e.db == nil || e.db.DB == nil {
 		return gormClientNilErr()
 	}
 	if len(mandatory) == 0 || (len(mandatory) > 0 && !mandatory[0]) {
-		if InsDB.DB.Migrator().HasTable(&gormadapter.CasbinRule{}) {
+		if e.db.DB.Migrator().HasTable(&gormadapter.CasbinRule{}) {
 			return nil
 		}
 	}
 
-	return InsDB.DB.AutoMigrate(gormadapter.CasbinRule{})
+	return e.db.DB.AutoMigrate(gormadapter.CasbinRule{})
 }
 
 // CustomEnforce 校验权限是否存在
@@ -81,7 +77,7 @@ func (e *CachedEnforcer) CustomGinMiddleware(getSubFunc func(c *gin.Context) (st
 			c.Abort()
 			return
 		}
-		allowed, err := InsCasbin.CustomEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method)
+		allowed, err := e.CustomEnforce(sub, strings.ReplaceAll(c.Request.URL.Path, globalApiPrefix, ""), c.Request.Method)
 		if err != nil {
 			ResponseError(c, MsgErrServerBusy("权限校验失败", err))
 			c.Abort()
@@ -235,7 +231,10 @@ func (e *CachedEnforcer) CustomHasRules(rules ...string) (rulesMap map[string]bo
 	}
 
 	var ruleCountList []*ruleCount
-	if err = InsDB.DB.
+	if e == nil || e.db == nil || e.db.DB == nil {
+		return nil, gormClientNilErr()
+	}
+	if err = e.db.DB.
 		Model(&gormadapter.CasbinRule{}).
 		Where("ptype = 'p' and v0 in ?", rules).
 		Select("v0 'role', count(1) 'count' ").

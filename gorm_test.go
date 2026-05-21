@@ -3,6 +3,8 @@ package wd
 import (
 	"strings"
 	"testing"
+
+	"gorm.io/gorm/logger"
 )
 
 func TestNormalizedGormDriver(t *testing.T) {
@@ -85,6 +87,30 @@ func TestPostgresDSNValue(t *testing.T) {
 	}
 	if got := postgresDSNValue("Asia/Shanghai"); got != "Asia/Shanghai" {
 		t.Fatalf("postgresDSNValue() = %q", got)
+	}
+}
+
+func TestGormLogLevel(t *testing.T) {
+	tests := map[GormLogLevel]logger.LogLevel{
+		"":                     logger.Info,
+		GormLogDebug:           logger.Info,
+		GormLogInfo:            logger.Info,
+		GormLogWarn:            logger.Warn,
+		GormLogWarning:         logger.Warn,
+		GormLogErr:             logger.Error,
+		GormLogError:           logger.Error,
+		GormLogSilent:          logger.Silent,
+		GormLogLevel("waring"): logger.Warn,
+	}
+
+	for input, want := range tests {
+		got, err := gormLogLevel(input)
+		if err != nil {
+			t.Fatalf("gormLogLevel(%q) returned error: %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("gormLogLevel(%q) = %v, want %v", input, got, want)
+		}
 	}
 }
 

@@ -643,10 +643,7 @@ db, err := wd.InitGormDB(
             "loc":       "Asia/Shanghai",
         },
     },
-    wd.GormDefaultLogger(
-        wd.WithGormConfigLogLevel(4),
-        wd.WithGormConfigCallerPathMode(wd.GormCallerPathModeModuleRelative),
-    ),
+    wd.GormLogInfo,
 )
 if err != nil {
     panic(err)
@@ -669,17 +666,14 @@ db, err := wd.InitGormDB(
             "TimeZone": "Asia/Shanghai",
         },
     },
-    wd.GormDefaultLogger(
-        wd.WithGormConfigLogLevel(4),
-        wd.WithGormConfigCallerPathMode(wd.GormCallerPathModeModuleRelative),
-    ),
+    wd.GormLogInfo,
 )
 if err != nil {
     panic(err)
 }
 ```
 
-如果还需要兼容使用全局连接的旧代码，可以改用 `wd.InitGlobalGormDB(...)`，初始化完成后全局连接在 `wd.InsDB`。
+日志级别可直接传 `wd.GormLogDebug`、`wd.GormLogInfo`、`wd.GormLogWarn` / `wd.GormLogWarning`、`wd.GormLogErr` / `wd.GormLogError`、`wd.GormLogSilent`。
 
 ### 6.2 GORM 日志增强
 
@@ -695,7 +689,7 @@ if err != nil {
 
 ### 6.3 运行 gorm/gen
 
-入口是 `db.Gen(...)`；如果你使用 `wd.InitGlobalGormDB(...)`，也可以继续调用 `wd.InsDB.Gen(...)`。
+入口是 `db.Gen(...)`。
 
 ```go
 db.Gen(
@@ -892,10 +886,11 @@ if err != nil {
 初始化：
 
 ```go
-if err := wd.InitCasbin(); err != nil {
+casbinEnforcer, err := wd.InitCasbin(db)
+if err != nil {
     panic(err)
 }
-if err := wd.InsCasbin.InitCasbinRule(); err != nil {
+if err := casbinEnforcer.InitCasbinRule(); err != nil {
     panic(err)
 }
 ```
@@ -903,7 +898,7 @@ if err := wd.InsCasbin.InitCasbinRule(); err != nil {
 Gin 鉴权中间件：
 
 ```go
-r.Use(wd.InsCasbin.CustomGinMiddleware(func(c *gin.Context) (string, error) {
+r.Use(casbinEnforcer.CustomGinMiddleware(func(c *gin.Context) (string, error) {
     return "admin", nil
 }))
 ```
@@ -1238,7 +1233,7 @@ err := wd.RPost(
 
 | 文件 | 主要 API |
 | --- | --- |
-| `gorm.go` | `InitGormDB`、`InitGlobalGormDB`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
+| `gorm.go` | `InitGormDB`、`GormLogInfo`、`GormLogWarn`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
 | `gen.go` | `(*GormClient).Gen`、`WithGenOutFilePath`、`WithGenUseTablesName`、`WithGenTableColumnType`、`WithGenGlobalColumnTypeAddDatatypes` |
 | `gen_field.go` | `GenJSONArrayQuery`、`GenJSONArrayQueryContainsValue`、`GenCustomTimeBetween`、`GenNewBetween` |
 | `redis.go` | `InitRedis`、`(*RedisConfig).NewLock`、`SetCaptcha`、`GetCaptcha`、`DelCaptcha`、`FindAllBitMapByTargetValue`、`WithRedis*` |

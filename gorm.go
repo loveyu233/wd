@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	InsDB                      *GormClient
 	requestAwareGormLoggerFile = currentSourceFile()
 	moduleRootCache            sync.Map
 	requestAwareSkipFuncPrefix = []string{
@@ -57,6 +56,26 @@ type GormClient struct {
 	*gorm.DB
 }
 
+// GormLogLevel 用来声明 GORM SQL 日志输出级别。
+type GormLogLevel string
+
+const (
+	// GormLogSilent 表示不输出 GORM 日志。
+	GormLogSilent GormLogLevel = "silent"
+	// GormLogErr 表示只输出 GORM 错误日志。
+	GormLogErr GormLogLevel = "err"
+	// GormLogError 是 GormLogErr 的语义别名。
+	GormLogError GormLogLevel = "error"
+	// GormLogWarn 表示输出 GORM 警告和错误日志。
+	GormLogWarn GormLogLevel = "warn"
+	// GormLogWarning 是 GormLogWarn 的语义别名。
+	GormLogWarning GormLogLevel = "warning"
+	// GormLogDebug 表示输出所有 GORM SQL 日志。
+	GormLogDebug GormLogLevel = "debug"
+	// GormLogInfo 表示输出所有 GORM SQL 日志。
+	GormLogInfo GormLogLevel = "info"
+)
+
 type GormConnConfig struct {
 	Driver      GormDriver // 数据库驱动，默认 MySQL
 	Username    string
@@ -68,9 +87,14 @@ type GormConnConfig struct {
 	PrepareStmt bool                   // 是否启用 PrepareStmt，默认 false
 }
 
-// InitGormDB 用来根据配置创建 GORM 连接，不再写入全局 InsDB。
-func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) (*GormClient, error) {
+// InitGormDB 用来根据配置创建 GORM 连接。
+func InitGormDB(gcc GormConnConfig, logLevel GormLogLevel, opt ...func(db *gorm.DB) error) (*GormClient, error) {
 	dialector, err := buildGormDialector(gcc)
+	if err != nil {
+		return nil, err
+	}
+
+	gormLogger, err := buildGormLogger(logLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -97,18 +121,6 @@ func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db 
 	return &GormClient{DB: db}, nil
 }
 
-// InitGlobalGormDB 用来兼容需要全局 InsDB 的旧调用方式。
-func InitGlobalGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) error {
-	db, err := InitGormDB(gcc, gormLogger, opt...)
-	if err != nil {
-		return err
-	}
-
-	InsDB = db
-
-	return nil
-}
-
 func buildGormDialector(gcc GormConnConfig) (gorm.Dialector, error) {
 	switch normalizedGormDriver(gcc.Driver) {
 	case GormDriverMySQL:
@@ -125,6 +137,33 @@ func buildGormDialector(gcc GormConnConfig) (gorm.Dialector, error) {
 		return gormpostgres.Open(dsn), nil
 	default:
 		return nil, fmt.Errorf("不支持的 GORM 数据库驱动: %s", gcc.Driver)
+	}
+}
+
+func buildGormLogger(logLevel GormLogLevel) (logger.Interface, error) {
+	level, err := gormLogLevel(logLevel)
+	if err != nil {
+		return nil, err
+	}
+
+	return GormDefaultLogger(
+		WithGormConfigLogLevel(level),
+		WithGormConfigCallerPathMode(GormCallerPathModeModuleRelative),
+	), nil
+}
+
+func gormLogLevel(logLevel GormLogLevel) (logger.LogLevel, error) {
+	switch strings.ToLower(strings.TrimSpace(string(logLevel))) {
+	case "", string(GormLogDebug), string(GormLogInfo):
+		return logger.Info, nil
+	case string(GormLogWarn), string(GormLogWarning), "waring":
+		return logger.Warn, nil
+	case string(GormLogErr), string(GormLogError):
+		return logger.Error, nil
+	case string(GormLogSilent):
+		return logger.Silent, nil
+	default:
+		return logger.Silent, fmt.Errorf("不支持的 GORM 日志级别: %s", logLevel)
 	}
 }
 
