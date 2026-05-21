@@ -18,7 +18,6 @@ type GenFieldType struct {
 
 type GenConfig struct {
 	outFilePath            string
-	importPkgPaths         []string
 	globalColumnType       map[string]func(gorm.ColumnType) string
 	globalSimpleColumnType []GenFieldType
 	useTablesName          []string
@@ -28,13 +27,6 @@ type GenConfig struct {
 }
 
 type WithGenConfig func(*GenConfig)
-
-// WithGenImportPkgPath 用来声明生成模型中需要额外导入的包。
-func WithGenImportPkgPath(paths ...string) WithGenConfig {
-	return func(gc *GenConfig) {
-		gc.importPkgPaths = append(gc.importPkgPaths, paths...)
-	}
-}
 
 // WithGenOutFilePath 用来设置生成代码的输出目录。
 func WithGenOutFilePath(outFilePath string) WithGenConfig {
@@ -161,13 +153,11 @@ func (db *GormClient) Gen(opts ...WithGenConfig) {
 		genConfig.outFilePath = "gen/query"
 	}
 
-	cfg := gen.Config{
+	g := gen.NewGenerator(gen.Config{
 		OutPath:        genConfig.outFilePath,
 		FieldCoverable: false,
 		Mode:           gen.WithDefaultQuery | gen.WithQueryInterface | gen.WithoutContext,
-	}
-	cfg.WithImportPkgPath(genConfig.importPkgPaths...)
-	g := gen.NewGenerator(cfg)
+	})
 
 	var dataMap = map[string]func(columnType gorm.ColumnType) (dataType string){
 		"tinyint(1)": func(columnType gorm.ColumnType) (dataType string) {

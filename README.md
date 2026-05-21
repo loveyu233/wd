@@ -695,7 +695,6 @@ if err != nil {
 db.Gen(
     wd.WithGenOutFilePath("test/httpt/gen/query"),
     wd.WithGenUseTablesName("user", "audit_log"),
-    wd.WithGenImportPkgPath("demo/model_custom"),
     wd.WithGenGlobalColumnTypeAddDatatypes(),
     wd.WithGenTableColumnType(map[string][]wd.GenFieldType{
         "user": {
@@ -1240,7 +1239,7 @@ err := wd.RPost(
 | 文件 | 主要 API |
 | --- | --- |
 | `gorm.go` | `InitGormDB`、`GormLogInfo`、`GormLogWarn`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
-| `gen.go` | `(*GormClient).Gen`、`WithGenOutFilePath`、`WithGenImportPkgPath`、`WithGenUseTablesName`、`WithGenTableColumnType`、`WithGenGlobalColumnTypeAddDatatypes` |
+| `gen.go` | `(*GormClient).Gen`、`WithGenOutFilePath`、`WithGenUseTablesName`、`WithGenTableColumnType`、`WithGenGlobalColumnTypeAddDatatypes` |
 | `gen_field.go` | `GenJSONArrayQuery`、`GenJSONArrayQueryContainsValue`、`GenCustomTimeBetween`、`GenNewBetween` |
 | `redis.go` | `InitRedis`、`(*RedisConfig).NewLock`、`SetCaptcha`、`GetCaptcha`、`DelCaptcha`、`FindAllBitMapByTargetValue`、`WithRedis*` |
 | `redis_lua.go` | `LuaRedisRateLimit`、`LuaRedisDecrStock`、`LuaRedisIncrWithLimit`、`LuaRedisLeaderboardIncr`、`LuaRedisDistributedLock`、`LuaRedisBloomAdd`、`LuaRedisID` |

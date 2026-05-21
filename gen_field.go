@@ -39,7 +39,7 @@ func GenCustomTimeBetween(table schema.Tabler, column field.IColumnName, left, r
 	case "date_only":
 		return GenNewTime(table, column).Date().Between(left.Time(), right.Time())
 	case "time_only", "time_hour_minute":
-		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) between ? and ?", table.TableName(), column.ColumnName().String()), left, right)
+		return GenNewUnsafeFieldRaw(fmt.Sprintf("CAST(%s.%s AS TIME) between ? and ?", table.TableName(), column.ColumnName().String()), left, right)
 	default:
 		return nil
 	}
@@ -55,7 +55,7 @@ func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime 
 	case "date_only":
 		return GenNewTime(table, column).Date().Eq(dateTime.Time())
 	case "time_only":
-		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) = ?", table.TableName(), column.ColumnName().String()), dateTime)
+		return GenNewUnsafeFieldRaw(fmt.Sprintf("CAST(%s.%s AS TIME) = ?", table.TableName(), column.ColumnName().String()), dateTime)
 	case "time_hour_minute":
 		var value string
 		if len(timeHMComplements) > 0 && timeHMComplements[0] {
@@ -63,7 +63,7 @@ func GenNewCustomTimeEq(table schema.Tabler, column field.IColumnName, dateTime 
 		} else {
 			value = fmt.Sprintf("%s:00", dateTime)
 		}
-		return GenNewUnsafeFieldRaw(fmt.Sprintf("TIME(%s.%s) = ?", table.TableName(), column.ColumnName().String()), value)
+		return GenNewUnsafeFieldRaw(fmt.Sprintf("CAST(%s.%s AS TIME) = ?", table.TableName(), column.ColumnName().String()), value)
 	default:
 		return nil
 	}
