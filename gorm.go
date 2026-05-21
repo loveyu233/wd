@@ -19,6 +19,7 @@ import (
 
 	"github.com/rs/zerolog"
 	gormmysql "gorm.io/driver/mysql"
+	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -40,29 +41,42 @@ const (
 	defaultMySQLCharset = "utf8"
 )
 
+// GormDriver 用来声明 GORM 使用的数据库驱动。
+type GormDriver string
+
+const (
+	// GormDriverMySQL 表示使用 MySQL 驱动。
+	GormDriverMySQL GormDriver = "mysql"
+	// GormDriverPostgres 表示使用 PostgreSQL 驱动。
+	GormDriverPostgres GormDriver = "postgres"
+	// GormDriverPgSQL 是 PostgreSQL 驱动的常用别名。
+	GormDriverPgSQL GormDriver = "pgsql"
+)
+
 type GormClient struct {
 	*gorm.DB
 }
 
 type GormConnConfig struct {
+	Driver      GormDriver // 数据库驱动，默认 MySQL
 	Username    string
 	Password    string
 	Host        string
 	Port        int
 	Database    string
-	Params      map[string]interface{} // 连接参数,默认添加charset=utf8和parseTime=true以及loc=Asia/Shanghai
+	Params      map[string]interface{} // 连接参数，MySQL 默认 charset/parseTime/loc，PostgreSQL 默认 sslmode/TimeZone
 	PrepareStmt bool                   // 是否启用 PrepareStmt，默认 false
 }
 
-// InitGormDB 用来根据配置初始化全局 GORM 连接。
-func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) error {
-	dsn, err := buildMySQLDSN(gcc)
+// InitGormDB 用来根据配置创建 GORM 连接，不再写入全局 InsDB。
+func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) (*GormClient, error) {
+	dialector, err := buildGormDialector(gcc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	db, err := gorm.Open(
-		gormmysql.Open(dsn),
+		dialector,
 		&gorm.Config{
 			Logger:                 gormLogger,
 			TranslateError:         true,
@@ -71,19 +85,58 @@ func InitGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db 
 		},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, fn := range opt {
 		if err := fn(db); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	InsDB = new(GormClient)
-	InsDB.DB = db
+	return &GormClient{DB: db}, nil
+}
+
+// InitGlobalGormDB 用来兼容需要全局 InsDB 的旧调用方式。
+func InitGlobalGormDB(gcc GormConnConfig, gormLogger logger.Interface, opt ...func(db *gorm.DB) error) error {
+	db, err := InitGormDB(gcc, gormLogger, opt...)
+	if err != nil {
+		return err
+	}
+
+	InsDB = db
 
 	return nil
+}
+
+func buildGormDialector(gcc GormConnConfig) (gorm.Dialector, error) {
+	switch normalizedGormDriver(gcc.Driver) {
+	case GormDriverMySQL:
+		dsn, err := buildMySQLDSN(gcc)
+		if err != nil {
+			return nil, err
+		}
+		return gormmysql.Open(dsn), nil
+	case GormDriverPostgres:
+		dsn, err := buildPostgresDSN(gcc)
+		if err != nil {
+			return nil, err
+		}
+		return gormpostgres.Open(dsn), nil
+	default:
+		return nil, fmt.Errorf("不支持的 GORM 数据库驱动: %s", gcc.Driver)
+	}
+}
+
+func normalizedGormDriver(driver GormDriver) GormDriver {
+	switch strings.ToLower(strings.TrimSpace(string(driver))) {
+	case "", "mysql":
+		return GormDriverMySQL
+	case "pg", "pgsql", "postgres", "postgresql":
+		return GormDriverPostgres
+	default:
+		return driver
+	}
 }
 
 func buildMySQLDSN(gcc GormConnConfig) (string, error) {
@@ -137,6 +190,66 @@ func buildMySQLDSN(gcc GormConnConfig) (string, error) {
 		url.PathEscape(gcc.Database),
 		strings.Join(paramPairs, "&"),
 	), nil
+}
+
+func buildPostgresDSN(gcc GormConnConfig) (string, error) {
+	params := map[string]string{
+		"sslmode":  "disable",
+		"TimeZone": ShangHaiTimeLocation.String(),
+	}
+
+	for key, value := range gcc.Params {
+		if value == nil {
+			continue
+		}
+
+		rawValue := strings.TrimSpace(fmt.Sprint(value))
+		if rawValue == "" {
+			continue
+		}
+
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "timezone":
+			loc, err := parseMySQLLocation(rawValue)
+			if err != nil {
+				return "", fmt.Errorf("postgres 参数 TimeZone 无效: %w", err)
+			}
+			params["TimeZone"] = loc.String()
+		default:
+			params[key] = rawValue
+		}
+	}
+
+	dsnParts := []string{
+		formatPostgresDSNPair("host", gcc.Host),
+		formatPostgresDSNPair("port", strconv.Itoa(gcc.Port)),
+	}
+	if gcc.Username != "" {
+		dsnParts = append(dsnParts, formatPostgresDSNPair("user", gcc.Username))
+	}
+	if gcc.Password != "" {
+		dsnParts = append(dsnParts, formatPostgresDSNPair("password", gcc.Password))
+	}
+	dsnParts = append(dsnParts, formatPostgresDSNPair("dbname", gcc.Database))
+	for _, key := range sortedStringKeys(params) {
+		dsnParts = append(dsnParts, formatPostgresDSNPair(key, params[key]))
+	}
+
+	return strings.Join(dsnParts, " "), nil
+}
+
+func formatPostgresDSNPair(key, value string) string {
+	return key + "=" + postgresDSNValue(value)
+}
+
+func postgresDSNValue(value string) string {
+	if !strings.ContainsAny(value, " \t\n\r\v\f'\\") {
+		return value
+	}
+
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `'`, `\'`)
+	return "'" + value + "'"
 }
 
 func parseMySQLBoolParam(value any) (bool, error) {

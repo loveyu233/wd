@@ -33,7 +33,7 @@
 | JWT 认证 | `auth_jwt.go` `auth_jwt_options.go` | 登录、鉴权、刷新、Claims 提取、Cookie/RSA 支持 | `NewGinJWTMiddleware` |
 | 响应与错误 | `response.go` `params_verify.go` `gin_param.go` | 统一响应体、错误码、中文参数校验、query/path 参数读取 | `ResponseSuccess` `ResponseError` |
 | PATCH/查询参数 | `patch_field.go` `patch_field_assign.go` `params_precompiled.go` | PATCH 三态字段、分页、范围查询、文件表单辅助 | `Field[T]` `PatchUpdate` `ReqRange` |
-| GORM 工具 | `gorm.go` `gen.go` `gen_field.go` | 初始化 DB、增强 SQL 日志、gorm/gen 代码生成 | `InitGormDB` `InsDB.Gen` |
+| GORM 工具 | `gorm.go` `gen.go` `gen_field.go` | 初始化 DB、增强 SQL 日志、gorm/gen 代码生成 | `InitGormDB` `db.Gen` |
 | Redis 工具 | `redis.go` `redis_lua.go` | 初始化 Redis、分布式锁、限流、排行榜、库存、Bloom、ID 生成 | `InitRedis` |
 | 定时/权限/搜索 | `cron_task.go` `casbin.go` `es.go` | 分布式定时任务、RBAC、Elasticsearch 批量写入 | `InitCronJob` `InitCasbin` `InitEs` |
 | 短信服务 | `sms.go` | 阿里云短信发送能力 | `NewSMS` `NewSMSWithAccessKey` `NewSMSWithClient` |
@@ -626,11 +626,12 @@ wd.ResponseSuccess(c, gin.H{"content_type": contentType, "size": size})
 
 ### 6.1 初始化数据库
 
-入口是 `wd.InitGormDB(...)`。
+入口是 `wd.InitGormDB(...)`，返回 `*wd.GormClient`；默认兼容 MySQL，也可以通过 `Driver` 切换 PostgreSQL。
 
 ```go
-err := wd.InitGormDB(
+db, err := wd.InitGormDB(
     wd.GormConnConfig{
+        Driver:   wd.GormDriverMySQL, // 可省略，默认 MySQL；PostgreSQL 使用 wd.GormDriverPostgres 或 wd.GormDriverPgSQL
         Username: "root",
         Password: "",
         Host:     "127.0.0.1",
@@ -652,7 +653,33 @@ if err != nil {
 }
 ```
 
-初始化完成后，全局连接在 `wd.InsDB`。
+PostgreSQL 示例：
+
+```go
+db, err := wd.InitGormDB(
+    wd.GormConnConfig{
+        Driver:   wd.GormDriverPostgres,
+        Username: "postgres",
+        Password: "",
+        Host:     "127.0.0.1",
+        Port:     5432,
+        Database: "demo",
+        Params: map[string]any{
+            "sslmode":  "disable",
+            "TimeZone": "Asia/Shanghai",
+        },
+    },
+    wd.GormDefaultLogger(
+        wd.WithGormConfigLogLevel(4),
+        wd.WithGormConfigCallerPathMode(wd.GormCallerPathModeModuleRelative),
+    ),
+)
+if err != nil {
+    panic(err)
+}
+```
+
+如果还需要兼容使用全局连接的旧代码，可以改用 `wd.InitGlobalGormDB(...)`，初始化完成后全局连接在 `wd.InsDB`。
 
 ### 6.2 GORM 日志增强
 
@@ -668,10 +695,10 @@ if err != nil {
 
 ### 6.3 运行 gorm/gen
 
-入口是 `wd.InsDB.Gen(...)`。
+入口是 `db.Gen(...)`；如果你使用 `wd.InitGlobalGormDB(...)`，也可以继续调用 `wd.InsDB.Gen(...)`。
 
 ```go
-wd.InsDB.Gen(
+db.Gen(
     wd.WithGenOutFilePath("test/httpt/gen/query"),
     wd.WithGenUseTablesName("user", "audit_log"),
     wd.WithGenGlobalColumnTypeAddDatatypes(),
@@ -1211,7 +1238,7 @@ err := wd.RPost(
 
 | 文件 | 主要 API |
 | --- | --- |
-| `gorm.go` | `InitGormDB`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
+| `gorm.go` | `InitGormDB`、`InitGlobalGormDB`、`GormDefaultLogger`、`WrapGormLoggerWithRequestLogger`、`WithGormConfig*` |
 | `gen.go` | `(*GormClient).Gen`、`WithGenOutFilePath`、`WithGenUseTablesName`、`WithGenTableColumnType`、`WithGenGlobalColumnTypeAddDatatypes` |
 | `gen_field.go` | `GenJSONArrayQuery`、`GenJSONArrayQueryContainsValue`、`GenCustomTimeBetween`、`GenNewBetween` |
 | `redis.go` | `InitRedis`、`(*RedisConfig).NewLock`、`SetCaptcha`、`GetCaptcha`、`DelCaptcha`、`FindAllBitMapByTargetValue`、`WithRedis*` |
@@ -1322,7 +1349,7 @@ err := wd.RPost(
 - 服务入口统一走 `InitHTTPServerAndStart`
 - 认证统一走 `NewGinJWTMiddleware`
 - 响应统一走 `ResponseSuccess` / `ResponseError`
-- 数据访问统一走 `InitGormDB` + `InsDB.Gen`
+- 数据访问统一走 `InitGormDB` + `db.Gen`
 - 缓存与分布式能力统一走 `InitRedis`
 - 短信能力统一走 `sms.go`
 

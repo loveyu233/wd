@@ -21,7 +21,7 @@ func redisClientNilErr() error {
 
 // gormClientNilErr 用来生成 gorm 客户端未初始化的错误。
 func gormClientNilErr() error {
-	return errors.New("InsDB为空,需要先使用gb.InitGorm()进行初始化")
+	return errors.New("InsDB为空,需要先使用wd.InitGlobalGormDB()进行初始化")
 }
 
 // ErrDuplicatedKey 用来判断错误是否由唯一键冲突引起。
