@@ -87,16 +87,21 @@ type GormConnConfig struct {
 	PrepareStmt bool                   // 是否启用 PrepareStmt，默认 false
 }
 
+var (
+	MyDB *GormClient
+	PgDB *GormClient
+)
+
 // InitGormDB 用来根据配置创建 GORM 连接。
-func InitGormDB(gcc GormConnConfig, logLevel GormLogLevel, opt ...func(db *gorm.DB) error) (*GormClient, error) {
+func InitGormDB(gcc GormConnConfig, logLevel GormLogLevel, opt ...func(db *gorm.DB) error) error {
 	dialector, err := buildGormDialector(gcc)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	gormLogger, err := buildGormLogger(logLevel)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	db, err := gorm.Open(
@@ -109,16 +114,25 @@ func InitGormDB(gcc GormConnConfig, logLevel GormLogLevel, opt ...func(db *gorm.
 		},
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, fn := range opt {
 		if err := fn(db); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return &GormClient{DB: db}, nil
+	switch normalizedGormDriver(gcc.Driver) {
+	case GormDriverMySQL:
+		MyDB = &GormClient{DB: db}
+		return nil
+	case GormDriverPostgres:
+		PgDB = &GormClient{DB: db}
+		return nil
+	default:
+		return fmt.Errorf("不支持的 GORM 数据库驱动: %s", gcc.Driver)
+	}
 }
 
 func buildGormDialector(gcc GormConnConfig) (gorm.Dialector, error) {
