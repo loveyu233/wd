@@ -142,6 +142,13 @@ func WithGenGlobalColumnTypeAddDatatypes() WithGenConfig {
 	}
 }
 
+func genNullableType(columnType gorm.ColumnType, dataType string) string {
+	if nullable, ok := columnType.Nullable(); ok && nullable {
+		return "*" + dataType
+	}
+	return dataType
+}
+
 // Gen 用来运行 gorm/gen 并输出查询代码。
 func (db *GormClient) Gen(opts ...WithGenConfig) {
 	var genConfig = new(GenConfig)
@@ -484,6 +491,59 @@ func (db *GormClient) Gen(opts ...WithGenConfig) {
 				return "*bool"
 			}
 			return "bool"
+		},
+
+		// PostgreSQL 类型
+		"int2": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "int16")
+		},
+		"int4": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "int32")
+		},
+		"int8": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "int64")
+		},
+		"float4": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "float32")
+		},
+		"float8": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "float64")
+		},
+		"bytea": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "[]byte")
+		},
+		"jsonb": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "datatypes.JSON")
+		},
+		"bpchar": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"uuid": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"inet": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"cidr": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"macaddr": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"macaddr8": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"timetz": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"time with time zone": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "string")
+		},
+		"timestamptz": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "wd.DateTime")
+		},
+		"timestamp with time zone": func(columnType gorm.ColumnType) (dataType string) {
+			return genNullableType(columnType, "wd.DateTime")
 		},
 	}
 
